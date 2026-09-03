@@ -108,3 +108,17 @@ test('no module reaches for the DOM at import time', async () => {
     );
   }
 });
+
+test('flex pills that are wider than their content must centre it', () => {
+  // Reported from a real phone: the "?" and "°C" chips had their glyphs shoved
+  // left. .chip is inline-flex with a min-width, so for short labels the pill
+  // is wider than its content and all the slack lands on one side. A button's
+  // default text-align: center does not help, because flex layout ignores it.
+  const css = readFileSync(resolve(here, '../public/styles.css'), 'utf8');
+  const block = css.slice(css.indexOf('.chip {'));
+  const rule = block.slice(0, block.indexOf('}'));
+  assert.match(
+    rule, /justify-content:\s*center/,
+    '.chip sets min-width and inline-flex, so it must also set justify-content: center',
+  );
+});

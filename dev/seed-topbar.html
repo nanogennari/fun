@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>seed</title></head><body>
+<!-- Dev only: accept the terms and reveal the wake chip, then go to the app so
+     the topbar can be screenshotted in its real state. -->
+<script type="module">
+import { recordAcceptance } from '../public/js/disclaimer.js';
+recordAcceptance();
+sessionStorage.setItem('fun.dev.showWake', '1');
+location.replace('../public/index.html');
+</script>
+</body></html>

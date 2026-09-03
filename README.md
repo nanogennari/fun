@@ -1,4 +1,4 @@
-# F.U.Ninja
+# F.U.N.
 
 A mobile web app that reads a **Ninja ProChef WP100** wireless meat thermometer
 directly in the browser, over Web Bluetooth. No vendor app, no account, no

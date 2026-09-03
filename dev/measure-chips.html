@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Dev only: loads the REAL app in an iframe, forces the main view, and
+     measures where each chip's text actually sits inside its pill. Measuring
+     beats guessing at a centring bug. -->
+<html><head><meta charset="utf-8"><title>measuring</title></head>
+<body style="font:13px monospace;white-space:pre">
+<iframe id="f" src="../public/index.html" style="width:390px;height:800px;border:0"></iframe>
+<div id="out"></div>
+<script>
+const out = document.getElementById('out');
+const f = document.getElementById('f');
+f.addEventListener('load', () => {
+  const d = f.contentDocument;
+  d.body.dataset.view = 'main';           // topbar is hidden on the gate view
+  const w = f.contentWindow;
+  const rows = [];
+  for (const id of ['help-toggle', 'unit-toggle', 'wake-toggle']) {
+    const btn = d.getElementById(id);
+    btn.hidden = false;
+    const b = btn.getBoundingClientRect();
+    const cs = w.getComputedStyle(btn);
+    rows.push(`#${id}`);
+    rows.push(`  pill    h=${b.height.toFixed(1)} w=${b.width.toFixed(1)}`);
+    rows.push(`  display=${cs.display} align=${cs.alignItems} justify=${cs.justifyContent} lh=${cs.lineHeight} pad=${cs.padding}`);
+    for (const span of btn.querySelectorAll('span')) {
+      const s = span.getBoundingClientRect();
+      const topGap = s.top - b.top;
+      const botGap = b.bottom - s.bottom;
+      const leftGap = s.left - b.left;
+      const rightGap = b.right - s.right;
+      rows.push(`  span "${span.textContent.trim()}" h=${s.height.toFixed(1)}`);
+      rows.push(`    vertical gaps  top=${topGap.toFixed(1)} bottom=${botGap.toFixed(1)}  -> delta ${(topGap - botGap).toFixed(1)}`);
+      rows.push(`    horizontal     left=${leftGap.toFixed(1)} right=${rightGap.toFixed(1)}  -> delta ${(leftGap - rightGap).toFixed(1)}`);
+    }
+    rows.push('');
+  }
+  out.textContent = rows.join('\n');
+  document.title = 'measured';
+});
+</script>
+</body></html>

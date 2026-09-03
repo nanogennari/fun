@@ -104,6 +104,11 @@ body {
   padding: 0 14px;
   display: inline-flex;
   align-items: center;
+  /* Required, not decorative: min-width makes the pill wider than its content
+   * for short labels like "?" and "°C", and without this the slack all lands
+   * on the right, shoving the glyph left. A button's default
+   * `text-align: center` does nothing here, because flex layout ignores it. */
+  justify-content: center;
   gap: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
