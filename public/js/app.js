@@ -6,7 +6,9 @@
  * panels and drop focus mid-rename.
  */
 
-import { ProbeScanner, WakeLock, adapterAvailable, capabilities, unsupportedReason } from './ble.js';
+import {
+  ProbeScanner, WakeLock, adapterAvailable, capabilities, describeScanError, unsupportedReason,
+} from './ble.js';
 import { fmtTemp } from './protocol.js';
 import { ProbeRegistry } from './store.js';
 
@@ -18,6 +20,7 @@ const el = {
   unsupported: document.getElementById('unsupported'),
   unsupportedTitle: document.getElementById('unsupported-title'),
   unsupportedBody: document.getElementById('unsupported-body'),
+  unsupportedSteps: document.getElementById('unsupported-steps'),
   unsupportedFlag: document.getElementById('unsupported-flag'),
   flagUrl: document.getElementById('flag-url'),
   copyFlag: document.getElementById('copy-flag'),
@@ -60,6 +63,41 @@ function download(filename, text) {
   a.click();
   // Revoking immediately can cancel the download on some mobile browsers.
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/**
+ * Render the notice card. Used both for "this browser cannot scan at all" at
+ * boot and for a scan that failed once started, so the guidance looks the same
+ * either way.
+ */
+function showNotice({ title, body, steps = [], flag = null }) {
+  el.unsupported.hidden = false;
+  el.unsupportedTitle.textContent = title;
+  el.unsupportedBody.textContent = body;
+
+  el.unsupportedSteps.replaceChildren();
+  if (steps.length) {
+    for (const step of steps) {
+      const li = document.createElement('li');
+      li.textContent = step;
+      el.unsupportedSteps.appendChild(li);
+    }
+    el.unsupportedSteps.hidden = false;
+  } else {
+    el.unsupportedSteps.hidden = true;
+  }
+
+  if (flag) {
+    el.unsupportedFlag.hidden = false;
+    el.flagUrl.textContent = flag;
+  } else {
+    el.unsupportedFlag.hidden = true;
+  }
+  el.unsupported.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function hideNotice() {
+  el.unsupported.hidden = true;
 }
 
 // ------------------------------------------------------------------ cards
@@ -176,6 +214,7 @@ async function startScan() {
       (reading) => registry.ingest(reading),
       (err) => console.warn('advertisement parse failed', err),
     );
+    hideNotice();
     el.scanBtn.textContent = 'Stop scanning';
     el.scanBtn.dataset.scanning = 'true';
     el.scanStatus.textContent = scanner.filtered
@@ -187,11 +226,10 @@ async function startScan() {
   } catch (err) {
     el.scanBtn.dataset.scanning = 'false';
     el.scanBtn.textContent = 'Start scanning';
-    if (err?.name === 'NotAllowedError') {
-      el.scanStatus.textContent = 'Permission denied. Tap to try again.';
-    } else {
-      el.scanStatus.textContent = `Could not start scanning: ${err?.message ?? err}`;
-    }
+    const d = describeScanError(err);
+    el.scanStatus.textContent = d.title;
+    showNotice(d);
+    console.warn('requestLEScan failed', err);
   }
 }
 
@@ -254,20 +292,15 @@ async function boot() {
 
   const reason = unsupportedReason();
   if (reason) {
-    el.unsupported.hidden = false;
-    el.unsupportedTitle.textContent = reason.title;
-    el.unsupportedBody.textContent = reason.body;
-    if (reason.flag) {
-      el.unsupportedFlag.hidden = false;
-      el.flagUrl.textContent = reason.flag;
-    }
+    showNotice({ ...reason, steps: reason.steps ?? [] });
     el.scanBtn.disabled = true;
     el.scanStatus.textContent = 'Scanning is not available in this browser.';
   } else if (!(await adapterAvailable())) {
-    el.unsupported.hidden = false;
-    el.unsupportedTitle.textContent = 'Bluetooth is off';
-    el.unsupportedBody.textContent =
-      'No Bluetooth adapter is available. Switch Bluetooth on and reload.';
+    showNotice({
+      title: 'Bluetooth is off',
+      body: 'No Bluetooth adapter is available. Switch Bluetooth on and reload.',
+      steps: [],
+    });
   }
 
   // Probes remembered from a previous session render immediately, marked

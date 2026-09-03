@@ -370,3 +370,14 @@ body {
   * { transition: none !important; }
   .btn:active { transform: none; }
 }
+
+/* Numbered remediation steps inside the notice card. Long paths like
+ * "Settings → Apps → Chrome → …" must wrap rather than overflow on a phone. */
+.steps {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+.steps li { margin-bottom: 6px; overflow-wrap: anywhere; }
+.steps li:last-child { margin-bottom: 0; }

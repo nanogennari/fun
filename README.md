@@ -270,6 +270,51 @@ Worth reading before filing a bug.
 
 ---
 
+## Troubleshooting
+
+### "Could not start scanning: Bluetooth adapter not available"
+
+Despite the wording, this is almost never a hardware or Bluetooth-off problem.
+On Android, BLE scanning needs the `BLUETOOTH_SCAN` runtime permission, which
+the system presents as **"Nearby devices"**. Chrome does not prompt for it, and
+nothing in the browser hints that it is missing — you just get an error about
+the adapter.
+
+```
+Settings → Apps → Chrome → Permissions → Nearby devices → Allow
+```
+
+Then **force-close Chrome** — swipe it away in Recents. Backgrounding it is not
+enough for the new permission to take effect.
+
+If it still fails, also grant Chrome **Location** and switch **system Location**
+on. Android historically gated BLE scanning behind location access (a scan can
+be used to infer position), and while Android 12+ separated the two with
+`BLUETOOTH_SCAN`, some vendor builds still want location enabled.
+
+The app diagnoses this case and shows the steps inline, rather than passing
+Chrome's raw message through.
+
+### A probe appears but both temperatures show `--`
+
+The payload is in the scan response, not the primary advertisement
+([PROTOCOL.md §2](PROTOCOL.md)). If the device is discovered but carries no
+manufacturer data, the scanner is not picking up `SCAN_RSP`. Open the card's
+**Details** panel: if *Raw counts* also shows `--`, no payload arrived at all.
+
+### Nothing appears for 10–15 seconds
+
+Expected. The advertising interval is around 10 s ([PROTOCOL.md
+§6](PROTOCOL.md)), so an empty list immediately after tapping *Start scanning*
+is normal. Make sure the probe is switched on and out of its dock.
+
+### The scan button does nothing / "Scanning API missing"
+
+The experimental flag is off, or the browser was not fully relaunched after
+enabling it. See the top of this README.
+
+---
+
 ## Roadmap
 
 Recording already runs for every probe from its first reading, so the data is

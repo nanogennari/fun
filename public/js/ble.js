@@ -52,6 +52,74 @@ export function unsupportedReason() {
   };
 }
 
+/**
+ * Turn a requestLEScan failure into something actionable.
+ *
+ * Chrome's own messages are terse and misleading here. The worst offender is
+ * "Bluetooth adapter not available", which sounds like broken hardware but on
+ * Android almost always means Chrome lacks the BLUETOOTH_SCAN runtime
+ * permission -- shown to users as "Nearby devices". Chrome never prompts for
+ * it, so nothing in the browser hints at the cause.
+ *
+ * @returns {{title:string, body:string, steps:string[]}}
+ */
+export function describeScanError(err) {
+  const name = err?.name ?? '';
+  const msg = String(err?.message ?? err ?? '');
+  const android = /Android/i.test(navigator.userAgent ?? '');
+
+  if (name === 'NotAllowedError') {
+    return {
+      title: 'Permission declined',
+      body: 'The browser prompt was dismissed or blocked. Tap "Start scanning" and choose to allow it.',
+      steps: [],
+    };
+  }
+
+  // Chrome reports this as NotFoundError, sometimes only in the message text.
+  if (name === 'NotFoundError' || /adapter|not available|no.*bluetooth/i.test(msg)) {
+    return {
+      title: 'Chrome is not allowed to scan',
+      body: android
+        ? 'Chrome can see the Bluetooth radio but is not permitted to scan with it. Android calls this permission "Nearby devices", and Chrome never asks for it.'
+        : 'Chrome cannot reach a Bluetooth adapter. Check that Bluetooth is switched on and that the browser is allowed to use it.',
+      steps: android
+        ? [
+            'Settings → Apps → Chrome → Permissions → Nearby devices → Allow',
+            'Make sure Bluetooth is on',
+            'Force-close Chrome: swipe it away in Recents. Backgrounding is not enough.',
+            'Still failing? Also allow Location for Chrome and switch system Location on — older Android tied BLE scanning to location, and some builds still do.',
+          ]
+        : [
+            'Switch Bluetooth on',
+            'On Linux, check that the browser can reach BlueZ over D-Bus',
+          ],
+    };
+  }
+
+  if (name === 'InvalidStateError') {
+    return {
+      title: 'Bluetooth is not ready',
+      body: 'The adapter is busy or still starting up. Switch Bluetooth off and on again, then retry.',
+      steps: [],
+    };
+  }
+
+  if (name === 'TypeError' || /requestLEScan is not a function/i.test(msg)) {
+    return {
+      title: 'Scanning API missing',
+      body: 'This build of the browser does not expose requestLEScan. Enable the experimental flag and relaunch.',
+      steps: ['chrome://flags/#enable-experimental-web-platform-features → Enabled', 'Relaunch the browser'],
+    };
+  }
+
+  return {
+    title: 'Could not start scanning',
+    body: msg || 'The browser refused to start a scan and gave no reason.',
+    steps: [],
+  };
+}
+
 /** True if a Bluetooth adapter appears to be present and powered. */
 export async function adapterAvailable() {
   try {
