@@ -32,12 +32,29 @@ const ALARM_REARM_MARGIN = 18;
 
 const LS_KEY = 'fun.state.v1';
 
+/**
+ * Should the setup guide be on screen at boot?
+ *
+ * Pure so the rule is testable: headless browsers expose no Web Bluetooth at
+ * all, so the `ready === true` branch cannot be reached in an automated
+ * browser check.
+ *
+ * @param {{dismissed:boolean, ready:boolean}} o
+ */
+export function shouldShowSetup({ dismissed, ready }) {
+  // Respect a dismissal -- but never hide a genuine blocker, or the scan button
+  // sits disabled with its explanation hidden.
+  return !dismissed || !ready;
+}
+
 export class ProbeRegistry extends EventTarget {
   constructor() {
     super();
     /** @type {Map<string, object>} */
     this.probes = new Map();
     this.unit = 'c';
+    /** Has the user (or a successful scan) already retired the setup guide? */
+    this.setupDismissed = false;
     this._saveTimer = null;
     this._load();
   }
@@ -174,6 +191,20 @@ export class ProbeRegistry extends EventTarget {
     }
   }
 
+  /**
+   * Retire the setup guide so it stops appearing on every load.
+   *
+   * Set both when the user dismisses it and when a probe is first found -- a
+   * probe arriving proves the whole chain works, which is the same information
+   * the guide exists to convey. It stays reachable from the ? button, and the
+   * app overrides this if something later actually blocks scanning.
+   */
+  setSetupDismissed(on = true) {
+    if (this.setupDismissed === Boolean(on)) return;
+    this.setupDismissed = Boolean(on);
+    this._scheduleSave();
+  }
+
   setUnit(unit) {
     this.unit = unit === 'f' ? 'f' : 'c';
     this._scheduleSave();
@@ -245,7 +276,11 @@ export class ProbeRegistry extends EventTarget {
         samples: p.samples,
         targetRaw: p.targetRaw ?? null,
       }));
-      localStorage.setItem(LS_KEY, JSON.stringify({ unit: this.unit, probes }));
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        unit: this.unit,
+        setupDismissed: this.setupDismissed,
+        probes,
+      }));
     } catch {
       // Quota exceeded or storage disabled. Losing persistence is acceptable;
       // losing the live session is not, so never let this throw upward.
@@ -258,6 +293,7 @@ export class ProbeRegistry extends EventTarget {
       if (!raw) return;
       const data = JSON.parse(raw);
       this.unit = data.unit === 'f' ? 'f' : 'c';
+      this.setupDismissed = data.setupDismissed === true;
       for (const p of data.probes ?? []) {
         // Drop phantoms persisted by an earlier build that accepted the
         // power-on placeholder frame.

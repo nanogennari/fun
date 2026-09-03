@@ -292,3 +292,69 @@ test('a persisted phantom probe is purged on load', () => {
   assert.ok(r.get(A), 'the real probe must survive');
   assert.equal(r.get('000000000000'), undefined);
 });
+
+// ---------------------------------------------------------------- setup guide
+
+test('setup guide dismissal persists across a reload', () => {
+  mem.clear();
+  const r1 = new ProbeRegistry();
+  assert.equal(r1.setupDismissed, false, 'shown on a first visit');
+  r1.setSetupDismissed(true);
+  r1._save();
+
+  const r2 = new ProbeRegistry();
+  assert.equal(r2.setupDismissed, true, 'must not reappear on every load');
+});
+
+test('dismissal defaults to false for state saved before the flag existed', () => {
+  mem.clear();
+  mem.set('fun.state.v1', JSON.stringify({ unit: 'c', probes: [] }));
+  const r = new ProbeRegistry();
+  assert.equal(r.setupDismissed, false);
+});
+
+test('setSetupDismissed is idempotent and can be reversed', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  r.setSetupDismissed(true);
+  r.setSetupDismissed(true);
+  assert.equal(r.setupDismissed, true);
+  r.setSetupDismissed(false);
+  assert.equal(r.setupDismissed, false);
+});
+
+test('dismissal survives alongside probes and unit', () => {
+  mem.clear();
+  const r1 = new ProbeRegistry();
+  r1.ingest(parseMfgData(frame(A, 761, 728)));
+  r1.setNickname(A, 'brisket');
+  r1.setUnit('f');
+  r1.setSetupDismissed(true);
+  r1._save();
+
+  const r2 = new ProbeRegistry();
+  assert.equal(r2.setupDismissed, true);
+  assert.equal(r2.unit, 'f');
+  assert.equal(r2.get(A).nickname, 'brisket');
+});
+
+test('corrupt state does not leave the guide permanently dismissed', () => {
+  // Failing open matters: a user who has never seen the guide must get it.
+  mem.clear();
+  mem.set('fun.state.v1', '{broken');
+  const r = new ProbeRegistry();
+  assert.equal(r.setupDismissed, false);
+});
+
+test('shouldShowSetup: dismissal is respected only while nothing is blocking', async () => {
+  const { shouldShowSetup } = await import('../public/js/store.js');
+  // First visit: always show.
+  assert.equal(shouldShowSetup({ dismissed: false, ready: true }), true);
+  assert.equal(shouldShowSetup({ dismissed: false, ready: false }), true);
+  // Dismissed and everything fine: stay out of the way. This is the branch a
+  // headless browser cannot reach, since it exposes no Web Bluetooth.
+  assert.equal(shouldShowSetup({ dismissed: true, ready: true }), false);
+  // Dismissed but something is blocking: override, or the disabled scan button
+  // has no visible explanation.
+  assert.equal(shouldShowSetup({ dismissed: true, ready: false }), true);
+});

@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>seed</title></head><body>
+<!-- Dev only: seeds a dismissed-guide state plus a real probe, so the
+     persistence path can be checked in a real browser. -->
+<script>
+localStorage.setItem('fun.state.v1', JSON.stringify({
+  unit: 'c',
+  setupDismissed: true,
+  probes: [{
+    probeId: '5ce1024db36c', deviceId: 'dev-a', name: 'Ninja-WP100-R',
+    nickname: 'brisket', firstSeen: Date.now() - 6e5, lastSeen: Date.now() - 6e5,
+    selected: true, targetRaw: 1544,
+    samples: [[Date.now() - 6e5, 761, 728, 100], [Date.now() - 3e5, 900, 740, 99]],
+  }],
+}));
+document.title = 'seeded';
+</script>
+seeded
+</body></html>

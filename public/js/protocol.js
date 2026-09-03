@@ -79,6 +79,11 @@ export function parseMfgData(data, meta = {}) {
   // Bytes 4-9 are a stable per-probe id. This matters more in the browser than
   // anywhere else: Web Bluetooth deliberately hides the MAC address, so this is
   // our only durable device identity across sessions and origins.
+  //
+  // Only bytes 4-5 actually vary between units -- 6-9 are the constant
+  // 02 4d b3 6c on every probe seen (PROTOCOL.md 3). All six are kept as the
+  // id because the whole field is what identifies a probe; the shared tail
+  // just means the id has less entropy than its length suggests.
   const probeId = Array.from(b.slice(4, 10), (x) => x.toString(16).padStart(2, '0')).join('');
 
   // Drop the power-on placeholder frame. Without an id there is nothing to key
@@ -90,6 +95,10 @@ export function parseMfgData(data, meta = {}) {
 
   return {
     frameType: b[0],
+    // NOT a battery level, despite the name, which is kept for compatibility.
+    // Byte 1 is a hard-coded 0x64: two probes at very different states of
+    // charge both report 100. See PROTOCOL.md 3.2. Do not present this to a
+    // user as a battery reading.
     batteryPct: b[1],
     unknown2: b[2],
     unknown3: b[3],

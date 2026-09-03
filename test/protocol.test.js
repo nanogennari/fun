@@ -31,6 +31,8 @@ test('parses every real captured frame', () => {
     const r = parseMfgData(hex(h));
     assert.ok(r, `failed to parse ${h}`);
     assert.equal(r.frameType, 0x06);
+    // byte 1 under a legacy name -- a constant, not a battery level; see
+    // 'byte 1 is a constant, not a battery level' below
     assert.equal(r.batteryPct, 100);
     assert.equal(r.probeId, '5ce1024db36c');
     assert.equal(r.unknown2, 1);
@@ -158,4 +160,52 @@ test('isUnsetProbeId recognises the unpopulated patterns', () => {
   assert.equal(isUnsetProbeId(''), true);
   assert.equal(isUnsetProbeId(null), true);
   assert.equal(isUnsetProbeId('5ce1024db36c'), false);
+});
+
+
+// Two probes captured simultaneously, one near-full and one running on the
+// partial charge it shipped from the factory with. See PROTOCOL.md section 9.1
+// -- this is the capture that disproved the "byte 1 is battery percent"
+// reading. Shared verbatim with the Python suite.
+const TWO_PROBES = [
+  { addr: '48:31:B7:C5:D8:9A', charge: 'near full', hex: '066401015ce1024db36c0c03f902', probeId: '5ce1024db36c' },
+  { addr: '48:31:B7:C6:05:2E', charge: 'low',       hex: '0664010130eb024db36c14031003', probeId: '30eb024db36c' },
+];
+
+test('byte 1 is a constant, not a battery level', () => {
+  // Two cells at different states of charge cannot both be 100%, so the byte
+  // carries no charge information. Pinned so nobody re-derives "battery
+  // percent" from a single fully charged probe again.
+  for (const p of TWO_PROBES) {
+    const r = parseMfgData(hex(p.hex));
+    assert.ok(r, p.addr);
+    assert.equal(r.batteryPct, 100, `${p.addr} (${p.charge})`);
+  }
+});
+
+test('only the serial and the temperatures differ between probes', () => {
+  const [a, b] = TWO_PROBES.map((p) => hex(p.hex));
+
+  const differing = [];
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) differing.push(i);
+
+  // Every difference falls inside the serial (4-5) or the temperatures
+  // (10-13). Bytes inside those fields can still coincide, as byte 11 does
+  // here: both probes sat near 78 F, so both high bytes are 0x03.
+  const allowed = new Set([4, 5, 10, 11, 12, 13]);
+  assert.deepEqual(differing.filter((i) => !allowed.has(i)), []);
+
+  // The real claim: nothing outside those two fields varies at all, so no byte
+  // is available to carry a battery level.
+  assert.deepEqual(Array.from(a.slice(0, 4)), [0x06, 0x64, 0x01, 0x01]);
+  assert.deepEqual(Array.from(b.slice(0, 4)), [0x06, 0x64, 0x01, 0x01]);
+
+  // Bytes 6-9 are a constant shared by both units, so the probe id is really a
+  // 2-byte serial plus a 4-byte model/batch code.
+  assert.deepEqual(Array.from(a.slice(6, 10)), [0x02, 0x4d, 0xb3, 0x6c]);
+  assert.deepEqual(Array.from(b.slice(6, 10)), [0x02, 0x4d, 0xb3, 0x6c]);
+
+  for (const p of TWO_PROBES) {
+    assert.equal(parseMfgData(hex(p.hex)).probeId, p.probeId);
+  }
 });

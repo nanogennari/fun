@@ -12,7 +12,7 @@ import {
 import { Alarm } from './alarm.js';
 import { createChartPanel } from './chart.js';
 import { cToRaw, fToRaw, fmtTemp, rawToC, rawToF } from './protocol.js';
-import { ProbeRegistry } from './store.js';
+import { ProbeRegistry, shouldShowSetup } from './store.js';
 
 const registry = new ProbeRegistry();
 const scanner = new ProbeScanner();
@@ -575,7 +575,10 @@ el.helpToggle.addEventListener('click', async () => {
   setSetupVisible(!showing);
 });
 
-el.setupDismiss.addEventListener('click', () => setSetupVisible(false));
+el.setupDismiss.addEventListener('click', () => {
+  registry.setSetupDismissed(true);
+  setSetupVisible(false);
+});
 
 el.unitToggle.addEventListener('click', () => {
   registry.setUnit(registry.unit === 'c' ? 'f' : 'c');
@@ -594,7 +597,9 @@ el.wakeToggle.addEventListener('click', async () => {
 
 registry.addEventListener('probe-added', () => {
   // A probe arriving proves the whole chain works, so the guide has served its
-  // purpose. Still reachable from the ? button.
+  // purpose -- permanently, not just for this session. Still reachable from
+  // the ? button.
+  registry.setSetupDismissed(true);
   setSetupVisible(false);
   renderEmptyState();
 });
@@ -635,7 +640,7 @@ async function boot() {
   // The checklist is the single place setup guidance lives; the notice card is
   // reserved for runtime scan failures, so the two never look interchangeable.
   const { ready } = await renderSetup();
-  setSetupVisible(true);
+  setSetupVisible(shouldShowSetup({ dismissed: registry.setupDismissed, ready }));
   el.scanBtn.disabled = !ready;
   el.scanStatus.textContent = ready
     ? 'Switch a probe on and take it out of its dock.'

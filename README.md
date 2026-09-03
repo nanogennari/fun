@@ -16,8 +16,9 @@ payload layout, temperature scale, evidence, and what is still unknown.
 ## ⚠ It needs an experimental Chrome flag
 
 F.U.Ninja reads **BLE advertisements**, because that is where the ProChef puts its
-telemetry: battery level and both temperatures are broadcast continuously, with
-no connection required ([PROTOCOL.md §2](PROTOCOL.md)).
+telemetry: both temperatures are broadcast continuously, with no connection
+required ([PROTOCOL.md §2](PROTOCOL.md)). Battery level is *not* — see the
+caveat below.
 
 The browser API for that is `navigator.bluetooth.requestLEScan()`, and it is
 **behind a flag** in Chrome and Edge. Without it the method does not exist.
@@ -59,12 +60,14 @@ There is no polyfill possible — this needs OS-level radio access.
 
 ## What it does
 
-- **Guided setup.** A readiness checklist on first load, which *verifies* what
-  it can — browser support, secure context, whether the experimental flag is
-  actually on, whether an adapter is present — and marks the one thing it
-  cannot check (Android's "Nearby devices" permission) as exactly that, rather
-  than guessing. It disappears once a probe is found, and comes back from the
-  **?** button.
+- **Guided setup, shown once.** A readiness checklist on first load, which
+  *verifies* what it can — browser support, secure context, whether the
+  experimental flag is actually on, whether an adapter is present — and marks
+  the one thing it cannot check (Android's "Nearby devices" permission) as
+  exactly that, rather than guessing. Dismissing it, or finding a probe, retires
+  it **permanently**; it is always reachable again from the **?** button. The
+  one exception: if something later genuinely blocks scanning it reappears,
+  because otherwise the scan button would sit disabled with no explanation.
 - **Target temperature with an alarm.** Set a food target per probe; when it is
   reached the card alarms with sound, vibration and a banner until you stop it.
 - **History chart** in each probe's Details panel, with a scrub-to-read
@@ -300,8 +303,12 @@ Worth reading before filing a bug.
   ice-water check (0 °C should read raw ≈ 320) would settle it.
 - **Sensor resolution is really ~0.1 °C**, not the 0.1 °F the wire format
   implies: values move in steps of 2 raw counts. Don't over-trust the last digit.
-- **Battery percent has only ever been observed at 100%.** It reads like a
-  percentage, but that is not proven.
+- **The battery percentage is not real.** Payload byte 1 was assumed to be a
+  battery level; two probes observed at once — one nearly full, one running on
+  the charge it shipped from the factory with — both reported `0x64` = 100 in
+  every packet. The byte is a constant, and the app's battery display will read
+  100 % on a probe that is about to die. A real reading would need GATT, which
+  is not solved. See [PROTOCOL.md §3.2](PROTOCOL.md).
 - **Whether Chrome's `requestLEScan` reliably surfaces *scan-response*
   manufacturer data is not yet verified on real hardware.** The payload we need
   lives in the `SCAN_RSP`, not the primary advertisement. Android's scanner is
