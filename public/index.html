@@ -15,7 +15,12 @@
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
+<body data-view="loading">
+
+<noscript>
+  <p class="noscript">F.U.Ninja needs JavaScript: it talks to the probe over
+    Web Bluetooth, which has no non-JavaScript equivalent.</p>
+</noscript>
 
 <header class="topbar">
   <h1 class="brand">F.U.Ninja</h1>
@@ -34,7 +39,97 @@
   </div>
 </header>
 
-<main id="main">
+<!-- ===================== disclaimer view =====================
+     Shown once, before the app is reachable at all. Acceptance is recorded, so
+     returning users go straight to the main view. -->
+<section id="view-disclaimer" class="view gate" aria-labelledby="gate-title">
+  <div class="gate-inner">
+    <h1 class="gate-brand">F.U.Ninja</h1>
+    <h2 id="gate-title">Read this before you start</h2>
+
+    <div class="gate-body">
+      <section>
+        <h3>This is not official Ninja software</h3>
+        <p>Not affiliated with, endorsed by, or connected to SharkNinja
+          Operating LLC. &ldquo;Ninja&rdquo; and &ldquo;ProChef&rdquo; are their
+          trademarks, used here only to say which hardware this talks to. This
+          app was built by observing the probe&rsquo;s own Bluetooth broadcasts.</p>
+      </section>
+
+      <section>
+        <h3>Provided as is, with no warranty</h3>
+        <p>The protocol was reverse-engineered and may be incomplete or simply
+          wrong. It can break without notice, including after a firmware update
+          to your probe. <strong>You use this at your own risk and take full
+          responsibility for any decision you make with it</strong>, including
+          decisions about whether food is safe to eat.</p>
+      </section>
+
+      <section>
+        <h3>Safety features may be missing</h3>
+        <p>This does not reproduce everything the official app does.
+          <strong>There is no over-temperature warning.</strong> The real product
+          may have other alarms, limits, calibration steps or undocumented
+          behaviours that this app knows nothing about, because they were never
+          observed on the air and so could not be implemented.</p>
+      </section>
+
+      <section>
+        <h3>Known limitations</h3>
+        <ul>
+          <li>Readings arrive only about every <strong>10 seconds</strong>, so a
+            number on screen can be 15 seconds out of date.</li>
+          <li>The target alarm <strong>only sounds while this page is open</strong>.
+            Close it, or let the phone sleep without the wake lock, and nothing
+            will warn you.</li>
+          <li>The temperature scale was checked against a
+            <strong>single</strong> reference point near room temperature.</li>
+          <li>Which sensor is &ldquo;food&rdquo; and which is
+            &ldquo;ambient&rdquo; was worked out by observation, not from any
+            documentation.</li>
+          <li>Nothing here has been validated for food safety by anyone.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Do not rely on this alone</h3>
+        <p>Where undercooking actually matters &mdash; poultry, pork, minced
+          meat, reheating, preserving &mdash; confirm the temperature with an
+          independent thermometer you trust.</p>
+      </section>
+    </div>
+
+    <div class="gate-actions">
+      <button id="disclaimer-accept" class="btn btn-primary btn-lg" type="button" disabled>
+        I have read and accept
+      </button>
+      <button id="disclaimer-decline" class="btn btn-ghost" type="button">
+        Decline
+      </button>
+      <p id="gate-hint" class="hint">The button unlocks in a few seconds. Please
+        read the text above first.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== declined view ===================== -->
+<section id="view-declined" class="view gate" aria-labelledby="declined-title">
+  <div class="gate-inner gate-inner-narrow">
+    <h1 class="gate-brand">F.U.Ninja</h1>
+    <h2 id="declined-title">Not accepted</h2>
+    <p>You have not accepted the terms, so the app has not started. Nothing was
+      saved.</p>
+    <p class="hint">If you change your mind, reopen the terms below or just
+      reload the page.</p>
+    <div class="gate-actions">
+      <button id="declined-review" class="btn btn-primary btn-lg" type="button">
+        Review the terms again
+      </button>
+    </div>
+  </div>
+</section>
+
+<main id="main" class="view">
 
   <!-- Live readiness checklist. Several of these can be verified in the
        browser, so each step shows whether it is already satisfied rather than

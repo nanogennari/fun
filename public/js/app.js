@@ -10,6 +10,7 @@ import {
   FLAG_URL, ProbeScanner, WakeLock, capabilities, describeScanError, readiness,
 } from './ble.js';
 import { Alarm } from './alarm.js';
+import { runDisclaimerGate } from './disclaimer.js';
 import { createChartPanel } from './chart.js';
 import { cToRaw, fToRaw, fmtTemp, rawToC, rawToF } from './protocol.js';
 import { ProbeRegistry, shouldShowSetup } from './store.js';
@@ -46,7 +47,16 @@ const el = {
   unitLabel: document.getElementById('unit-label'),
   wakeToggle: document.getElementById('wake-toggle'),
   template: document.getElementById('probe-card-template'),
+  disclaimerAccept: document.getElementById('disclaimer-accept'),
+  disclaimerDecline: document.getElementById('disclaimer-decline'),
+  declinedReview: document.getElementById('declined-review'),
+  gateHint: document.getElementById('gate-hint'),
 };
+
+/** Swap the top-level view. Only one is ever on screen. */
+function setView(name) {
+  document.body.dataset.view = name;
+}
 
 /** @type {Map<string, HTMLElement>} probeId -> card */
 const cards = new Map();
@@ -654,4 +664,34 @@ async function boot() {
 
 }
 
-boot();
+/**
+ * Nothing of the app runs before the terms are accepted -- no scanning, no
+ * timers, no probe state rendered.
+ *
+ * A decline is not a dead end: it parks on the declined view until the user
+ * asks to review the terms, at which point the gate runs again from the start.
+ * Re-running it also restarts the read countdown, so decline-then-review is not
+ * a way to skip the wait.
+ */
+async function main() {
+  const gate = {
+    acceptBtn: el.disclaimerAccept,
+    declineBtn: el.disclaimerDecline,
+    hint: el.gateHint,
+    setView,
+  };
+
+  for (;;) {
+    const outcome = await runDisclaimerGate(gate);
+    if (outcome !== 'declined') break;
+    await new Promise((resume) => {
+      el.declinedReview.addEventListener('click', resume, { once: true });
+    });
+    window.scrollTo({ top: 0 });
+  }
+
+  setView('main');
+  await boot();
+}
+
+main();

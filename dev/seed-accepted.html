@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>seed</title></head><body>
+<!-- Dev only: records acceptance, then redirects into the app in the SAME
+     navigation, so verifying the returning-user path does not depend on
+     localStorage surviving a browser restart. -->
+<script type="module">
+import { recordAcceptance, needsAcceptance } from '../public/js/disclaimer.js';
+recordAcceptance();
+console.log('needsAcceptance after record:', needsAcceptance());
+location.replace('../public/index.html');
+</script>
+seeding...
+</body></html>

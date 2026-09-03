@@ -80,10 +80,14 @@ export function parseMfgData(data, meta = {}) {
   // anywhere else: Web Bluetooth deliberately hides the MAC address, so this is
   // our only durable device identity across sessions and origins.
   //
-  // Only bytes 4-5 actually vary between units -- 6-9 are the constant
-  // 02 4d b3 6c on every probe seen (PROTOCOL.md 3). All six are kept as the
-  // id because the whole field is what identifies a probe; the shared tail
-  // just means the id has less entropy than its length suggests.
+  // The field is the probe's own BLE address stored little-endian: reversed,
+  // 30eb024db36c is 6C:B3:4D:02:EB:30, and 6c:b3:4d is SharkNinja's OUI. That
+  // is why bytes 6-9 look constant -- only the low two vary per unit
+  // (PROTOCOL.md 3.2).
+  //
+  // Keying on this rather than the advertising address is not just a Web
+  // Bluetooth workaround: the radio that broadcasts a reading is not always
+  // the probe the reading is about (PROTOCOL.md 1.1).
   const probeId = Array.from(b.slice(4, 10), (x) => x.toString(16).padStart(2, '0')).join('');
 
   // Drop the power-on placeholder frame. Without an id there is nothing to key

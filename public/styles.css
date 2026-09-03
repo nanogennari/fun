@@ -708,3 +708,98 @@ body {
 .legend-item[aria-pressed="false"] { opacity: 0.45; }
 .legend-item[aria-pressed="false"] span:last-child { text-decoration: line-through; }
 .legend-item:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------------------------------------------------------------- views
+ *
+ * Exactly one top-level view is on screen. The body starts as data-view
+ * ="loading" so neither the app nor the disclaimer flashes before JavaScript
+ * decides which is appropriate.
+ */
+
+.view { display: none; }
+body[data-view="main"] #main,
+body[data-view="disclaimer"] #view-disclaimer,
+body[data-view="declined"] #view-declined { display: flex; }
+
+/* The topbar controls and footer belong to the app, not to the gate. */
+body:not([data-view="main"]) .topbar,
+body:not([data-view="main"]) .footer { display: none; }
+
+.noscript {
+  margin: 0;
+  padding: 16px var(--pad-x);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- gate */
+
+.gate {
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: max(20px, env(safe-area-inset-top)) var(--pad-x) var(--pad-bottom);
+}
+
+.gate-inner {
+  width: 100%;
+  max-width: 620px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+}
+.gate-inner-narrow { max-width: 420px; margin-top: 12vh; }
+
+.gate-brand {
+  margin: 0 0 18px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.gate h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.35rem, 6vw, 1.7rem);
+  line-height: 1.2;
+}
+
+.gate-body > section { margin-bottom: 18px; }
+
+.gate-body h3 {
+  margin: 0 0 5px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.gate-body p, .gate-body li {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+/* Emphasis inside the body must survive the muted body colour, or the
+ * genuinely important sentences read as quietly as everything else. */
+.gate-body strong { color: var(--text); }
+
+.gate-body ul { margin: 0; padding-left: 20px; }
+.gate-body li { margin-bottom: 8px; }
+
+.gate-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.gate-actions .hint { text-align: center; margin: 0; }
+
+/* A disabled accept button must look deliberately not-yet-ready rather than
+ * broken, since it is disabled by design for the first few seconds. */
+.gate-actions .btn-primary:disabled {
+  background: var(--surface-2);
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: default;
+}

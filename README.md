@@ -58,6 +58,39 @@ There is no polyfill possible — this needs OS-level radio access.
 
 ---
 
+## First run: the disclaimer
+
+Before the app is reachable at all, a **separate full-page view** presents the
+terms. It is not an overlay — none of the interface is visible or reachable
+until the terms are accepted, and nothing runs: no scanning, no timers, no
+probe state rendered.
+
+It covers what this is (unofficial, reverse-engineered, not affiliated with
+SharkNinja), that it is provided as is with all responsibility on the user, and
+that **safety features may be missing** — there is no over-temperature warning,
+and the real product may have alarms, limits or calibration behaviour that was
+never observed on the air and therefore could not be implemented. It also names
+the specific limitations that matter: the ~10 s update rate, the alarm needing
+the page open, the single-point temperature check, and that nothing here is
+validated for food safety.
+
+The accept button is **disabled for a 10-second countdown**, so it cannot be
+clicked through before the text has been read. Acceptance is recorded, and
+returning users go straight to the app.
+
+Declining is a real choice rather than a dead end: it parks on a declined view
+that explains nothing was saved, with a button to review the terms again — which
+re-runs the gate from the start, countdown included, so decline-then-review is
+not a way to skip the wait.
+
+The gate **fails closed**. A missing, unparseable, or older-version acceptance
+record all mean "show the terms again". The one exception is storage being
+unavailable (private mode, full quota): there, acceptance cannot be recorded, so
+the user is let through rather than trapped behind a gate that can never be
+satisfied — they will simply see it again next time. Bump `DISCLAIMER_VERSION`
+in `public/js/disclaimer.js` to re-prompt everyone when the terms change
+substantively.
+
 ## What it does
 
 - **Guided setup, shown once.** A readiness checklist on first load, which
@@ -217,6 +250,10 @@ npm test        # node --test, no dependencies
   suppression, staleness, and the alarm state machine (latching, acknowledge,
   re-arm hysteresis, and the disconnected-sensor sentinel that would otherwise
   trip every target).
+- `test/disclaimer.test.js` covers the gate: that it fails closed on corrupt or
+  outdated records, that a disabled or programmatic click cannot skip the read
+  delay, that declining records nothing, that re-running restarts the countdown
+  rather than resuming it, and that listeners do not stack across runs.
 - `test/chart.test.js` covers the chart's pure geometry: tick selection,
   downsampling that preserves spikes, axis rescaling when a series is hidden,
   and the flat-trace and single-sample edge cases.
@@ -249,6 +286,7 @@ chromium --headless=new --screenshot=out.png --window-size=390,1500 \
 │       ├── store.js           # multi-probe registry, history, targets, alarm state
 │       ├── chart.js           # history chart: pure geometry + canvas renderer
 │       ├── alarm.js           # Web Audio beeper + vibration
+│       ├── disclaimer.js      # first-run terms gate, countdown, acceptance record
 │       └── app.js             # UI controller
 ├── dev/                       # screenshot harnesses; NOT deployed
 ├── test/
@@ -303,6 +341,12 @@ Worth reading before filing a bug.
   ice-water check (0 °C should read raw ≈ 320) would settle it.
 - **Sensor resolution is really ~0.1 °C**, not the 0.1 °F the wire format
   implies: values move in steps of 2 raw counts. Don't over-trust the last digit.
+- **A reading's BLE address is not the probe's identity.** The `Ninja-WP100-R`
+  unit that broadcasts a reading is a *reporter*; the 6-byte probe id inside
+  the frame says which probe the reading is about, and one address was seen
+  reporting three different ids in a row. F.U.Ninja keys on the id, which is
+  correct — but if you port this, do the same. See
+  [PROTOCOL.md §1.1](PROTOCOL.md).
 - **The battery percentage is not real.** Payload byte 1 was assumed to be a
   battery level; two probes observed at once — one nearly full, one running on
   the charge it shipped from the factory with — both reported `0x64` = 100 in

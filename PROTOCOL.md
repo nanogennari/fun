@@ -11,32 +11,72 @@ is the executable form of §3 and §4; if the two ever disagree, this document i
 wrong and should be corrected.
 
 **Status: temperatures fully decoded.** Both temperatures are readable without
-connecting, pairing, or bonding. **Battery level is not in the advertisement at
-all** (§3.2) — byte 1 was previously documented as a battery percentage;
-observing two probes at different charge states disproved it. Control (setting
-target temperatures / alarms on the probe) would require GATT and is not yet
-solved.
+connecting, pairing, or bonding.
+
+Two corrections from a session with two units powered at once:
+
+- **Battery level is not in the advertisement at all** (§3.2). Byte 1 was
+  documented as a battery percentage; it reads `0x64` on a near-empty unit and
+  a near-full one alike, across all 70 telemetry frames captured.
+- **The 6-byte "probe id" is a BLE address** (§3.4), little-endian, in
+  SharkNinja's own OUI — and the unit *advertising* a reading is not
+  necessarily the probe the reading is *about* (§1.1).
+
+Control (setting target temperatures / alarms) would require GATT and is not
+yet solved.
 
 ---
 
 ## 1. Device identity
 
-| Property | Value |
-|---|---|
-| Advertised name | `Ninja-WP100-R` |
-| Example addresses | `48:31:B7:C5:D8:9A`, `48:31:B7:C6:05:2E` (public, static) |
-| Address OUI | `48:31:B7` → **Espressif Inc.** |
-| SoC | **ESP32** (per the OUI) |
-| Manufacturer company ID | `0x0C4F` → **SharkNinja Operating LLC** (SIG-assigned) |
-| Model | WP100 |
+There are **two different advertised names**, from two different OUIs:
 
-The `-R` suffix is unexplained. Candidates: a hardware revision, or a unit
-designator. **Two probes have now been observed and both advertise exactly
-`Ninja-WP100-R`**, so the suffix is not a per-unit designator; a hardware or
-model revision remains the best guess. Consequently the advertised name cannot
-be used to tell two probes apart — key on the probe serial (§3) instead.
+| | `Ninja-WP100-R` | `Ninja-WP100-P` |
+|---|---|---|
+| Example addresses | `48:31:B7:C5:D8:9A`, `48:31:B7:C6:05:2E` | `6C:B3:4D:02:EB:30` |
+| Address OUI | `48:31:B7` → **Espressif Inc.** | `6C:B3:4D` → **SharkNinja Operating LLC** |
+| Frame type | `0x06`, 14-byte payload | `0x0F`, 19-byte payload |
+| Service UUIDs | four (see §1.2) | **only** `0xFEF5` (SUOTA) |
+| Carries temperatures | yes | not in any frame seen |
 
-### 1.1 Advertised service UUIDs
+Both use manufacturer company ID `0x0C4F` → **SharkNinja Operating LLC**
+(SIG-assigned). Model: WP100.
+
+F.U.Ninja only parses the `0x06` frame; it ignores everything else.
+
+Every `-R` unit advertises exactly `Ninja-WP100-R`, so the name cannot tell two
+units apart — key on the probe id (§3.4) instead.
+
+### 1.1 `-R` is a reporter, not necessarily the probe
+
+The 6-byte id inside the telemetry frame identifies **which probe the reading is
+for**, and it is not a property of the advertising address. One `-R` address was
+observed reporting three different ids in sequence:
+
+```
+16:06:40  48:31:B7:C5:D8:9A   id=5ce1024db36c   no reading
+16:07:11  48:31:B7:C5:D8:9A   id=000000000000   no reading
+16:07:26  48:31:B7:C5:D8:9A   id=30eb024db36c   77.0 F / 62.7 F
+```
+
+That last id had, minutes earlier, been reported exclusively by the *other* `-R`
+address. So a reading migrated between reporters while keying on the same probe.
+
+The mapping is fully crossed: a later scan showed the *other* reporter,
+`48:31:B7:C6:05:2E`, carrying id `5ce1024db36c` — the id the first reporter had
+been broadcasting. Each of the two reporter addresses has now been observed
+carrying each of the two probe ids, at different times. Address and probe are
+independent.
+
+**Key probes on the id, never on the address.** F.U.Ninja already does — Web
+Bluetooth hides the MAC, so the id was the only option — but the reason is
+stronger than "the browser makes us": the address genuinely is not a probe
+identity.
+
+What `R` and `P` stand for is not established; "receiver / probe" is the obvious
+guess. See §10.
+
+### 1.2 Advertised service UUIDs
 
 Carried in the **scan response**, AD type `0x03` (Complete List of 16-bit
 Service Class UUIDs). Raw payload bytes:
@@ -89,7 +129,7 @@ this split is the single most important detail in the whole protocol:
 |---|---|---|
 | `0x01` | Flags | `0x06` |
 | `0xFF` | Manufacturer Specific Data | company `0x0C4F` + 14 payload bytes |
-| `0x03` | 16-bit Service Class UUIDs | see §1.1 |
+| `0x03` | 16-bit Service Class UUIDs | see §1.2 |
 
 > ### ⚠ The temperatures are in the SCAN RESPONSE
 >
@@ -121,10 +161,10 @@ Company ID `0x0C4F` (SharkNinja). Payload is **14 bytes**, fixed length.
         │    │    │  │      │          │           │       │
         │    │    │  │      │          │           │       └─ sensor B, int16 LE
         │    │    │  │      │          │           └───────── sensor A, int16 LE
-        │    │    │  │      │          └─ constant 02 4d b3 6c, SHARED by all probes
-        │    │    │  │      └─ per-probe serial (the only bytes that vary)
-        │    │    │  └─ unknown, always 0x01 so far
-        │    │    └─ unknown, always 0x01 so far
+        │    │    │  │      │          └─ 6c:b3:4d = SharkNinja OUI, reversed
+        │    │    │  │      └─ probe BLE address, little-endian (see 3.4)
+        │    │    │  └─ unknown, always 0x01
+        │    │    └─ reading valid: 1 = temps are real, 0 = both 0xFFFF (see 3.3)
         │    └─ constant 0x64 -- NOT battery, see 3.2
         └─ frame type / protocol version (0x06)
 ```
@@ -133,17 +173,15 @@ Company ID `0x0C4F` (SharkNinja). Payload is **14 bytes**, fixed length.
 |---|---|---|---|---|
 | 0 | 1 | Frame type | high | Always `0x06`. Used as the "is this telemetry" discriminator. |
 | 1 | 1 | unknown constant | high | Always `0x64` (100). **Not a battery level** — see §3.2. |
-| 2 | 1 | unknown | — | Always `0x01`, on both probes. |
-| 3 | 1 | unknown | — | Always `0x01`, on both probes. Not a probe index: two simultaneous probes both send `01 01`. |
-| 4–5 | 2 | Probe serial | high | The **only** payload bytes that differ between probes (`30 eb` vs `5c e1`). Static per probe. Not derived from the BLE MAC. |
-| 6–9 | 4 | unknown constant | high | Always `02 4d b3 6c` — **identical on both probes**, so not part of a per-unit id. Likely a model, batch or firmware code. |
+| 2 | 1 | Reading valid | high | `1` = the temperatures are real, `0` = both are `0xFFFF`. Perfect correlation over 70 frames — see §3.3. |
+| 3 | 1 | unknown | — | Always `0x01`, on every frame and both probes. Not a probe index: two simultaneous probes both send it. |
+| 4–9 | 6 | Probe address | high | The probe's own BLE address, **little-endian** — see §3.4. Bytes 6–9 look constant only because reversed they are SharkNinja's OUI. |
 | 10–11 | 2 | Sensor A | high | int16 little-endian, tenths of °F. |
 | 12–13 | 2 | Sensor B | high | int16 little-endian, tenths of °F. |
 
-Bytes 2 and 3 remain the prime suspects for a **temperature-unit flag**
-(°C/°F). They are *not* a probe index — two probes advertising at the same time
-both send `01 01`. If they encode the app's unit setting, a reimplementation
-must read them rather than assume — see §10, experiment 2.
+Byte 2 turned out to be a **reading-valid flag**, not the °C/°F flag it was
+guessed to be (§3.3). Byte 3 is still unknown and is now the only remaining
+candidate for a unit flag — though nothing has ever been seen to move it.
 
 ### 3.1 The power-on placeholder frame
 
@@ -164,10 +202,10 @@ the frame type will accept it. Observed consequence: a phantom device keyed on p
 for both temperatures.
 
 **Treat an all-zero (or all-`0xFF`) probe id as "not populated" and discard the
-frame.** The probe serial is the only durable device identity — the BLE address
-may be randomised by the platform, and the advertised name is identical on
-every unit (§1) — so a frame without one cannot be attributed to a probe
-anyway.
+frame.** The probe id is the only durable device identity — the advertising
+address belongs to whichever radio relayed the reading rather than to the probe
+(§1.1), Web Bluetooth hides it anyway, and the advertised name is identical on
+every unit (§1) — so a frame without an id cannot be attributed to a probe.
 
 Note this is *not* the same as a sensor sentinel. A frame from an identified
 probe with one sensor reading `0xFFFF` is real and should be shown with that
@@ -206,17 +244,62 @@ The one hypothesis this does not fully exclude is that byte 1 is a coarse level
 that only decrements below some low threshold, since the low probe still had
 usable charge. A drain-to-shutoff log settles it — see §10.
 
-### 3.3 Signedness
+### 3.3 Byte 2 is a reading-valid flag
+
+Byte 2 was long guessed to be a °C/°F flag. It is not — it tracks whether the
+temperatures in the same frame are populated:
+
+| byte 2 | Temperature bytes | Frames observed |
+|---|---|---|
+| `0x01` | a real reading | 61 |
+| `0x00` | `ff ff ff ff` | 9 |
+
+Correlation is perfect over all 70 telemetry frames captured. **So `0xFFFF` is
+the "no reading" sentinel** — previously an open question. A unit with no
+current data for a probe still advertises at the usual cadence, with
+`byte2 = 0` and both sensors at `0xFFFF`.
+
+Prefer the `byte2` check; it is explicit, and it agrees with the sentinel on
+every frame seen.
+
+> The power-on placeholder in §3.1 is transcribed with `byte2 = 1` alongside
+> `0xFFFF` temperatures, which contradicts the table above. The equivalent
+> frame in the current captures reads `06 64 00 01 ...`. The older
+> transcription is probably wrong, but it has not been re-observed — so
+> discard an all-zero-id frame regardless of `byte2`, as §3.1 says.
+
+### 3.4 The probe id is a BLE address
+
+Bytes 4–9 are the probe's own BLE address, stored **little-endian**, exactly as
+an address appears on the wire. Reverse the field and it becomes a MAC:
+
+```
+payload bytes 4-9 :  30 eb 02 4d b3 6c
+reversed          :  6c b3 4d 02 eb 30   ->  6C:B3:4D:02:EB:30
+```
+
+That address is not a guess — it was observed advertising, as the
+`Ninja-WP100-P` device in §1.
+
+`6C:B3:4D` is an IEEE OUI registered to **SharkNinja Operating LLC**, which
+explains the constant `02 4d b3 6c` tail that once looked like a model code: it
+is the OUI plus one byte, byte-reversed. Only the low two bytes vary between
+units, so the field carries roughly 16 bits of per-unit entropy despite being
+six bytes wide — still ample for keying a handful of probes, but worth knowing
+if you ever hash it.
+
+### 3.5 Signedness
 
 Read as **signed** int16. Tenths of °F puts 0 °F at raw `0`, so any reading
 below 0 °F (a freezer check, ≈ −18 °C = −0.4 °F = raw `−4`) needs a signed
 read. The entire cooking range is positive and far below `0x7FFF`, so the two
 interpretations agree in normal use.
 
-No "sensor disconnected / out of range" sentinel has been observed, so its
-value is unknown. Implementations should treat the extremes (`0x7FFF`,
-`0x8000`, `0xFFFF`) as "no reading" defensively rather than reporting a
-nonsense temperature.
+**The "no reading" sentinel is `0xFFFF`**, now directly observed (§3.3): both
+sensor fields go to `ff ff` together, and byte 2 drops to `0x00` in the same
+frame. Whether a *single* sensor can drop out alone has not been observed —
+they have always moved together — so handle that case anyway, and treat
+`0x7FFF` / `0x8000` as "no reading" defensively too.
 
 ---
 
@@ -396,16 +479,30 @@ in §2.
 
 ### 9.1 Two probes, different charge states
 
-The capture that disproved the battery field (§3.2). One representative frame
-per probe, taken from a 100 s observation of both probes running at once:
+The capture that disproved the battery field (§3.2), keyed on probe id rather
+than reporting address since the address is not a stable probe identity (§1.1):
 
-| Probe | Charge state | Manufacturer payload (hex) |
+| Probe id | Charge state | Manufacturer payload (hex) |
 |---|---|---|
-| `48:31:B7:C5:D8:9A` | near full | `066401015ce1024db36c0c03f902` |
-| `48:31:B7:C6:05:2E` | factory-fresh, low | `0664010130eb024db36c14031003` |
+| `5ce1024db36c` | near full | `066401015ce1024db36c0c03f902` |
+| `30eb024db36c` | factory-fresh, low | `0664010130eb024db36c14031003` |
 
-Byte-for-byte the two differ **only** at offsets 4–5 (serial) and 10–13
-(temperatures). Byte 1 is `0x64` in all 20 packets from both probes.
+Byte-for-byte the two differ **only** at offsets 4–5 (the varying part of the
+probe address) and 10–13 (temperatures). Byte 1 is `0x64` in all 20 packets of
+that capture, and in all 70 telemetry frames captured to date.
+
+### 9.2 No-reading frames and the `0x0F` frame
+
+| Payload (hex) | Meaning |
+|---|---|
+| `066400015ce1024db36cffffffff` | probe known, **no reading** (byte 2 = 0, §3.3) |
+| `06640001000000000000ffffffff` | **no probe** — all-zero id, discard (§3.1) |
+| `0f000000000000000030eb024db36cffffffff` | the 19-byte `0x0F` frame from a `-P` device |
+
+The `0x0F` frame has only ever been seen with this exact payload. Its trailing
+`ff ff ff ff` and the address at offset 9 mirror the `0x06` layout, but nothing
+in it has been observed to change, so its structure is inference. F.U.Ninja
+ignores every frame type but `0x06`.
 
 ---
 
@@ -413,31 +510,47 @@ Byte-for-byte the two differ **only** at offsets 4–5 (serial) and 10–13
 
 Ordered by value.
 
-1. **Ice-water two-point check.** Confirms there is no gain error away from
+1. **Which physical unit is `-R` and which is `-P`?** The top question, because
+   it decides what the data model means. `-R` advertises from an Espressif MAC
+   and carries the temperatures; `-P` advertises from SharkNinja's own OUI with
+   only a `0x0F` frame — and one `-R` address reported three different probe
+   ids in sequence (§1.1), so `-R` is a *reporter*, not necessarily a probe.
+
+   **The decisive test takes a minute:** with two units powered, switch one off
+   and re-scan. Whichever addresses disappear belong to that unit. If a single
+   unit owns both an `48:31:B7` and a `6C:B3:4D` address, the two names are two
+   roles of one device; if not, one is relaying for the other.
+
+2. **Ice-water two-point check.** Confirms there is no gain error away from
    room temperature. Cheap, and the only remaining doubt about the scale.
-2. **Toggle °C/°F in the official app.** Does byte 2 or 3 flip? If the probe
-   re-encodes based on a user setting, every implementation must read that flag
-   instead of assuming tenths of °F.
 3. ~~Warm one sensor in isolation to confirm the A/B mapping.~~ Superseded:
    confirmed by the owner in normal use (§5).
-4. ~~Power on a second probe.~~ Done (§1, §3, §9.1). Only bytes **4–5** are
-   per-probe; bytes 6–9 are a constant shared by both units. The `-R` name
-   suffix does not vary.
+4. ~~Power on a second probe.~~ Done (§1, §3.4, §9.1). The 6-byte "probe id" is
+   a **BLE address stored little-endian**, in SharkNinja's own OUI `6C:B3:4D` —
+   which is why bytes 6–9 looked like a constant. Only the low two bytes vary.
+   The `-R` name suffix does not vary, but a second suffix `-P` exists on a
+   different OUI entirely (§1).
 5. ~~Observe a partially discharged probe.~~ Done (§3.2). Byte 1 is **not** a
    battery percentage — it reads `0x64` on a near-empty probe and a near-full
-   one alike. Battery level is not broadcast at all.
-6. **Unplug / expose a sensor.** Finds the "no reading" sentinel value. The
-   power-on placeholder (§3.1) uses `0xFFFF`, which hints the sentinel may be
-   the same, but that is not established.
-7. **GATT with explicit connection parameters.** Now the only route to a real
+   one alike, across all 70 telemetry frames. Battery level is not broadcast.
+6. ~~Find the "no reading" sentinel.~~ Done (§3.3). It is `0xFFFF` in both
+   sensor fields, with byte 2 = `0x00` in the same frame. Still open: whether a
+   *single* sensor can drop out alone — both have always moved together.
+7. **GATT with explicit connection parameters.** The only route to a real
    battery level (§3.2), as well as to control, alarms and history. Try the
-   standard Battery Service (`0x180F` / `0x2A19`) first.
+   standard Battery Service (`0x180F` / `0x2A19`) first. The `-P` device has
+   never been connected to at all and is worth trying separately.
 8. **Drain the low probe to shutoff while logging.** The one battery hypothesis
    §3.2 does not exclude is that byte 1 is a coarse level that only decrements
    below some threshold. If byte 1 is still `0x64` on the last packet before
-   the probe powers off, the byte is a hard-coded constant.
-9. **Does the advertising rate change while the app is connected?** Determines
-   whether ~10 s is a floor or just an idle-mode rate.
+   the unit powers off, the byte is a hard-coded constant.
+9. **Toggle °C/°F in the official app.** Byte 2 turned out to be a
+   reading-valid flag (§3.3), so byte 3 is the last candidate for a unit flag —
+   and it has never been seen at anything but `0x01`.
+10. **Catch a `0x0F` frame carrying real data** (§9.2), which would settle both
+    its layout and what the `-P` device is for.
+11. **Does the advertising rate change while the app is connected?** Determines
+    whether ~10 s is a floor or just an idle-mode rate.
 
 ## 11. Radio behaviour observed from a browser
 
