@@ -38,6 +38,13 @@
 
 * { box-sizing: border-box; }
 
+/* The browser's own [hidden] rule is `display: none` from the UA stylesheet,
+ * which ANY author `display` declaration outranks. Several elements here are
+ * toggled via the hidden attribute while also carrying a class that sets
+ * display -- .chip (inline-flex) and .probes (flex) -- so without this they
+ * stay visible when hidden. Needs !important to beat those class rules. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   background: var(--bg);

@@ -22,7 +22,8 @@
     "serve": "python3 -m http.server 8788 --directory public",
     "dev": "wrangler dev",
     "test": "node --test test/",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "predeploy": "npm test"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

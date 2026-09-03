@@ -1,4 +1,12 @@
+# Asset filenames are not content-hashed, so a long max-age would pin visitors
+# to a stale app.js with no easy way out on mobile, where there is no convenient
+# hard-reload. max-age=0 + must-revalidate makes the browser always ask; it
+# still gets a cheap 304 from the ETag when nothing has changed.
+#
+# Permissions-Policy matters here beyond hardening: Web Bluetooth is gated by
+# it, so dropping the bluetooth token would break scanning.
 /*
+  Cache-Control: public, max-age=0, must-revalidate
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
