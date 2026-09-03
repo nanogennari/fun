@@ -1,5 +1,5 @@
 /**
- * Web Bluetooth scanning layer for F.U.N.
+ * Web Bluetooth scanning layer for F.U.Ninja
  *
  * All ProChef telemetry lives in BLE advertisements (specifically the scan
  * response -- see PROTOCOL.md section 2), so this uses
@@ -29,106 +29,30 @@ export function capabilities() {
   };
 }
 
-/** Human-readable explanation of why scanning is unavailable, or null. */
-export function unsupportedReason() {
-  const c = capabilities();
-  if (c.ok) return null;
-  if (!c.secure) {
-    return {
-      title: 'Needs a secure connection',
-      body: 'Web Bluetooth only works over HTTPS (or on localhost during development). Open this page via its https:// address.',
-    };
-  }
-  if (!c.hasBluetooth) {
-    return {
-      title: 'No Web Bluetooth in this browser',
-      body: 'Use Chrome or Edge on Android, or a desktop Chrome/Edge. Safari and Firefox do not implement Web Bluetooth.',
-    };
-  }
-  return {
-    title: 'Bluetooth scanning is switched off',
-    body: 'Reading advertisements needs an experimental flag. Open chrome://flags/#enable-experimental-web-platform-features, set it to Enabled, and relaunch the browser.',
-    flag: 'chrome://flags/#enable-experimental-web-platform-features',
-  };
-}
-
 /**
- * Turn a requestLEScan failure into something actionable.
+ * Snapshot of everything we can actually verify about the environment.
  *
- * Chrome's own messages are terse and misleading here. The worst offender is
- * "Bluetooth adapter not available", which sounds like broken hardware but on
- * Android almost always means Chrome lacks the BLUETOOTH_SCAN runtime
- * permission -- shown to users as "Nearby devices". Chrome never prompts for
- * it, so nothing in the browser hints at the cause.
- *
- * @returns {{title:string, body:string, steps:string[]}}
+ * The point is to avoid telling people to check things that are demonstrably
+ * already fine. Note what is *not* here: whether Chrome holds Android's
+ * BLUETOOTH_SCAN ("Nearby devices") permission. There is no API to query it, so
+ * it can only be inferred from a scan failing -- which is why the checklist
+ * marks that step as unverifiable rather than guessing.
  */
-export function describeScanError(err) {
-  const name = err?.name ?? '';
-  const msg = String(err?.message ?? err ?? '');
-  const android = /Android/i.test(navigator.userAgent ?? '');
-
-  if (name === 'NotAllowedError') {
-    return {
-      title: 'Permission declined',
-      body: 'The browser prompt was dismissed or blocked. Tap "Start scanning" and choose to allow it.',
-      steps: [],
-    };
-  }
-
-  // Chrome reports this as NotFoundError, sometimes only in the message text.
-  if (name === 'NotFoundError' || /adapter|not available|no.*bluetooth/i.test(msg)) {
-    return {
-      title: 'Chrome is not allowed to scan',
-      body: android
-        ? 'Chrome can see the Bluetooth radio but is not permitted to scan with it. Android calls this permission "Nearby devices", and Chrome never asks for it.'
-        : 'Chrome cannot reach a Bluetooth adapter. Check that Bluetooth is switched on and that the browser is allowed to use it.',
-      steps: android
-        ? [
-            'Settings → Apps → Chrome → Permissions → Nearby devices → Allow',
-            'Make sure Bluetooth is on',
-            'Force-close Chrome: swipe it away in Recents. Backgrounding is not enough.',
-            'Still failing? Also allow Location for Chrome and switch system Location on — older Android tied BLE scanning to location, and some builds still do.',
-          ]
-        : [
-            'Switch Bluetooth on',
-            'On Linux, check that the browser can reach BlueZ over D-Bus',
-          ],
-    };
-  }
-
-  if (name === 'InvalidStateError') {
-    return {
-      title: 'Bluetooth is not ready',
-      body: 'The adapter is busy or still starting up. Switch Bluetooth off and on again, then retry.',
-      steps: [],
-    };
-  }
-
-  if (name === 'TypeError' || /requestLEScan is not a function/i.test(msg)) {
-    return {
-      title: 'Scanning API missing',
-      body: 'This build of the browser does not expose requestLEScan. Enable the experimental flag and relaunch.',
-      steps: ['chrome://flags/#enable-experimental-web-platform-features → Enabled', 'Relaunch the browser'],
-    };
-  }
-
+export async function readiness() {
+  const c = capabilities();
+  const ua = navigator.userAgent ?? '';
   return {
-    title: 'Could not start scanning',
-    body: msg || 'The browser refused to start a scan and gave no reason.',
-    steps: [],
+    android: /Android/i.test(ua),
+    ios: /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1),
+    secure: c.secure,
+    hasBluetooth: c.hasBluetooth,
+    hasScan: c.hasScan,
+    // Only meaningful once the API exists; otherwise there is nothing to ask.
+    adapter: c.hasScan ? await adapterAvailable() : null,
   };
 }
 
-/** True if a Bluetooth adapter appears to be present and powered. */
-export async function adapterAvailable() {
-  try {
-    if (!navigator.bluetooth?.getAvailability) return true; // can't tell; assume yes
-    return await navigator.bluetooth.getAvailability();
-  } catch {
-    return true;
-  }
-}
+export const FLAG_URL = 'chrome://flags/#enable-experimental-web-platform-features';
 
 /**
  * A running advertisement scan.
@@ -163,7 +87,7 @@ export class ProbeScanner {
     if (this.running) return;
 
     const cap = capabilities();
-    if (!cap.ok) throw new Error('scanning unavailable: see unsupportedReason()');
+    if (!cap.ok) throw new Error('scanning unavailable: see readiness()');
 
     this._onReading = onReading;
     this._onError = onError;

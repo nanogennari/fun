@@ -1,5 +1,5 @@
 /**
- * F.U.N. -- app controller.
+ * F.U.Ninja -- app controller.
  *
  * Cards are created once per probe and then mutated in place. A full re-render
  * on every advertisement would fight the user: it would collapse open <details>
@@ -7,7 +7,7 @@
  */
 
 import {
-  ProbeScanner, WakeLock, adapterAvailable, capabilities, describeScanError, unsupportedReason,
+  FLAG_URL, ProbeScanner, WakeLock, capabilities, describeScanError, readiness,
 } from './ble.js';
 import { fmtTemp } from './protocol.js';
 import { ProbeRegistry } from './store.js';
@@ -24,6 +24,13 @@ const el = {
   unsupportedFlag: document.getElementById('unsupported-flag'),
   flagUrl: document.getElementById('flag-url'),
   copyFlag: document.getElementById('copy-flag'),
+  setup: document.getElementById('setup'),
+  setupTitle: document.getElementById('setup-title'),
+  setupIntro: document.getElementById('setup-intro'),
+  setupSteps: document.getElementById('setup-steps'),
+  setupLegend: document.getElementById('setup-legend'),
+  setupDismiss: document.getElementById('setup-dismiss'),
+  helpToggle: document.getElementById('help-toggle'),
   scanPanel: document.getElementById('scan-panel'),
   scanBtn: document.getElementById('scan-btn'),
   scanStatus: document.getElementById('scan-status'),
@@ -98,6 +105,174 @@ function showNotice({ title, body, steps = [], flag = null }) {
 
 function hideNotice() {
   el.unsupported.hidden = true;
+}
+
+// ------------------------------------------------------------------ setup guide
+
+/**
+ * Build the readiness checklist.
+ *
+ * Steps carry one of three states:
+ *   ok     -- verified satisfied, nothing to do
+ *   action -- verified NOT satisfied, the user must do something
+ *   info   -- cannot be verified from the browser, so just explain it
+ *
+ * Being honest about the third case matters. Android's "Nearby devices"
+ * permission is the single most common cause of failure and there is no API to
+ * check it, so claiming it is fine would be a lie and claiming it is broken
+ * would cry wolf.
+ */
+function buildSetupSteps(r) {
+  const steps = [];
+
+  if (r.ios) {
+    steps.push({
+      state: 'action',
+      label: 'This will not work on iOS',
+      detail: 'Every iOS browser is required to use Apple\u2019s WebKit engine, and WebKit does not implement Web Bluetooth. Chrome for iOS cannot help. Use an Android phone, or a desktop Chrome or Edge.',
+    });
+    return steps;
+  }
+
+  steps.push({
+    state: r.hasBluetooth ? 'ok' : 'action',
+    label: r.hasBluetooth ? 'Browser supports Web Bluetooth' : 'Use Chrome or Edge',
+    detail: r.hasBluetooth
+      ? null
+      : 'Firefox and Safari do not implement Web Bluetooth, and no polyfill is possible \u2014 it needs OS-level radio access.',
+  });
+
+  steps.push({
+    state: r.secure ? 'ok' : 'action',
+    label: r.secure ? 'Served over a secure connection' : 'Open this page over HTTPS',
+    detail: r.secure
+      ? null
+      : 'Web Bluetooth only works on HTTPS or localhost. An address like http://192.168.x.x will never work, whatever else you change.',
+  });
+
+  steps.push({
+    state: r.hasScan ? 'ok' : 'action',
+    label: r.hasScan
+      ? 'Bluetooth scanning is enabled'
+      : 'Turn on experimental web platform features',
+    detail: r.hasScan
+      ? null
+      : 'Reading a probe needs requestLEScan, which sits behind a flag. Paste the address below into the address bar, set it to Enabled, then fully relaunch the browser.',
+    copy: r.hasScan ? null : FLAG_URL,
+  });
+
+  // Only ask about Android's permission once the API is actually present --
+  // otherwise it is noise on top of a more fundamental problem.
+  if (r.android && r.hasScan) {
+    steps.push({
+      state: 'info',
+      label: 'Allow Chrome to find nearby devices',
+      detail: 'Settings \u2192 Apps \u2192 Chrome \u2192 Permissions \u2192 Nearby devices \u2192 Allow. Chrome never asks for this, and without it scanning fails with a misleading message about the Bluetooth adapter. Afterwards, force-close Chrome by swiping it away in Recents \u2014 backgrounding it is not enough.',
+    });
+  }
+
+  if (r.hasScan) {
+    steps.push({
+      state: r.adapter === false ? 'action' : r.adapter ? 'ok' : 'info',
+      label: r.adapter === false ? 'Switch Bluetooth on' : 'Bluetooth is on',
+      detail: r.adapter === false ? 'The browser reports no available Bluetooth adapter.' : null,
+    });
+  }
+
+  steps.push({
+    state: 'info',
+    label: 'Switch the probe on and take it out of its dock',
+    detail: 'A docked or sleeping probe does not broadcast.',
+  });
+
+  steps.push({
+    state: 'info',
+    label: 'Tap \u201cStart scanning\u201d and allow the prompt',
+    detail: 'The first reading can take 10\u201315 seconds: that is how often the probe broadcasts, not a hang.',
+  });
+
+  return steps;
+}
+
+function renderSetupSteps(steps) {
+  el.setupSteps.replaceChildren();
+  for (const s of steps) {
+    const li = document.createElement('li');
+    li.className = 'check';
+    li.dataset.state = s.state;
+
+    const mark = document.createElement('span');
+    mark.className = 'check-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = s.state === 'ok' ? '\u2713' : s.state === 'action' ? '!' : '\u2022';
+
+    const body = document.createElement('div');
+    body.className = 'check-body';
+
+    const label = document.createElement('p');
+    label.className = 'check-label';
+    label.textContent = s.label;
+    // Screen readers get the state as words, not as a bare glyph.
+    const sr = document.createElement('span');
+    sr.className = 'sr-only';
+    sr.textContent = s.state === 'ok' ? ' (done) ' : s.state === 'action' ? ' (needs attention) ' : ' ';
+    label.prepend(sr);
+    body.appendChild(label);
+
+    if (s.detail) {
+      const d = document.createElement('p');
+      d.className = 'check-detail';
+      d.textContent = s.detail;
+      body.appendChild(d);
+    }
+
+    if (s.copy) {
+      const code = document.createElement('code');
+      code.className = 'flag';
+      code.textContent = s.copy;
+      body.appendChild(code);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-ghost';
+      btn.textContent = 'Copy address';
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(s.copy);
+          btn.textContent = 'Copied';
+          setTimeout(() => { btn.textContent = 'Copy address'; }, 2000);
+        } catch {
+          btn.textContent = 'Copy failed \u2014 select it by hand';
+        }
+      });
+      body.appendChild(btn);
+    }
+
+    li.append(mark, body);
+    el.setupSteps.appendChild(li);
+  }
+}
+
+async function renderSetup() {
+  const r = await readiness();
+  const steps = buildSetupSteps(r);
+  const blocking = steps.filter((s) => s.state === 'action');
+
+  el.setupTitle.textContent = blocking.length ? 'Before you can scan' : 'Getting started';
+  el.setupIntro.textContent = blocking.length
+    ? 'A couple of things need changing first.'
+    : 'Everything the browser can check looks ready.';
+  el.setupLegend.textContent = steps.some((s) => s.state === 'info')
+    ? '\u2713 checked automatically \u00b7 ! needs your attention \u00b7 \u2022 cannot be checked from the browser'
+    : '';
+
+  renderSetupSteps(steps);
+  return { ready: capabilities().ok, blocking: blocking.length };
+}
+
+function setSetupVisible(on) {
+  el.setup.hidden = !on;
+  el.helpToggle.setAttribute('aria-pressed', String(Boolean(on)));
 }
 
 // ------------------------------------------------------------------ cards
@@ -248,6 +423,14 @@ el.scanBtn.addEventListener('click', () => {
   else startScan();
 });
 
+el.helpToggle.addEventListener('click', async () => {
+  const showing = el.helpToggle.getAttribute('aria-pressed') === 'true';
+  if (!showing) await renderSetup(); // re-check: they may have just fixed something
+  setSetupVisible(!showing);
+});
+
+el.setupDismiss.addEventListener('click', () => setSetupVisible(false));
+
 el.unitToggle.addEventListener('click', () => {
   registry.setUnit(registry.unit === 'c' ? 'f' : 'c');
 });
@@ -263,7 +446,12 @@ el.wakeToggle.addEventListener('click', async () => {
   }
 });
 
-registry.addEventListener('probe-added', () => renderEmptyState());
+registry.addEventListener('probe-added', () => {
+  // A probe arriving proves the whole chain works, so the guide has served its
+  // purpose. Still reachable from the ? button.
+  setSetupVisible(false);
+  renderEmptyState();
+});
 registry.addEventListener('change', (e) => {
   if (e.detail) updateCard(e.detail);
   else renderAll();
@@ -290,18 +478,14 @@ async function boot() {
   el.unitLabel.textContent = unitSuffix();
   if (WakeLock.supported) el.wakeToggle.hidden = true; // revealed once scanning
 
-  const reason = unsupportedReason();
-  if (reason) {
-    showNotice({ ...reason, steps: reason.steps ?? [] });
-    el.scanBtn.disabled = true;
-    el.scanStatus.textContent = 'Scanning is not available in this browser.';
-  } else if (!(await adapterAvailable())) {
-    showNotice({
-      title: 'Bluetooth is off',
-      body: 'No Bluetooth adapter is available. Switch Bluetooth on and reload.',
-      steps: [],
-    });
-  }
+  // The checklist is the single place setup guidance lives; the notice card is
+  // reserved for runtime scan failures, so the two never look interchangeable.
+  const { ready } = await renderSetup();
+  setSetupVisible(true);
+  el.scanBtn.disabled = !ready;
+  el.scanStatus.textContent = ready
+    ? 'Switch a probe on and take it out of its dock.'
+    : 'Work through the checklist above first.';
 
   // Probes remembered from a previous session render immediately, marked
   // offline until a fresh advertisement arrives -- better than an empty screen,
@@ -309,9 +493,6 @@ async function boot() {
   renderAll();
   setInterval(refreshAges, 1000);
 
-  if (capabilities().ok) {
-    el.scanStatus.textContent = 'Switch a probe on and take it out of its dock.';
-  }
 }
 
 boot();

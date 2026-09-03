@@ -10,7 +10,7 @@
 <meta name="description" content="Read a Ninja ProChef wireless thermometer in the browser over Web Bluetooth.">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>F.U.N.</title>
+<title>F.U.Ninja</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./styles.css">
@@ -18,8 +18,12 @@
 <body>
 
 <header class="topbar">
-  <h1 class="brand">F.U.N.</h1>
+  <h1 class="brand">F.U.Ninja</h1>
   <div class="topbar-actions">
+    <button id="help-toggle" class="chip" type="button" aria-pressed="false"
+            aria-label="Show setup instructions">
+      <span aria-hidden="true">?</span>
+    </button>
     <button id="unit-toggle" class="chip" type="button" aria-label="Toggle temperature unit">
       <span id="unit-label">°C</span>
     </button>
@@ -32,8 +36,22 @@
 
 <main id="main">
 
-  <!-- Shown when requestLEScan is unavailable: wrong browser, no flag, or
-       insecure origin. Explains rather than silently doing nothing. -->
+  <!-- Live readiness checklist. Several of these can be verified in the
+       browser, so each step shows whether it is already satisfied rather than
+       asking the user to check things that are demonstrably fine. Hidden once a
+       probe has been seen; reopenable from the ? button. -->
+  <section id="setup" class="card setup">
+    <div class="setup-head">
+      <h2 id="setup-title">Setting up</h2>
+      <button id="setup-dismiss" class="btn-close" type="button" aria-label="Hide instructions">×</button>
+    </div>
+    <p id="setup-intro" class="setup-intro"></p>
+    <ol id="setup-steps" class="checklist"></ol>
+    <p id="setup-legend" class="hint"></p>
+  </section>
+
+  <!-- Errors and hard blockers. Separate from the checklist so a failure is
+       never mistaken for ordinary setup guidance. -->
   <section id="unsupported" class="card notice" hidden>
     <h2 id="unsupported-title">Bluetooth unavailable</h2>
     <p id="unsupported-body"></p>
@@ -51,15 +69,14 @@
     <button id="scan-btn" class="btn btn-primary btn-lg" type="button">
       Start scanning
     </button>
-    <p id="scan-status" class="hint" role="status" aria-live="polite">
-      Switch a probe on and take it out of its dock.
-    </p>
+    <p id="scan-status" class="hint" role="status" aria-live="polite"></p>
   </section>
 
   <section id="empty" class="card empty" hidden>
-    <h2>No probes yet</h2>
-    <p>Probes advertise only about every <strong>10 seconds</strong>, so it can
-      take a moment for one to appear. Keep the phone within a few metres.</p>
+    <h2>Looking for probes…</h2>
+    <p>Probes broadcast only about every <strong>10 seconds</strong>, so this can
+      take a moment. Keep the phone within a few metres, and make sure the probe
+      is switched on and out of its dock.</p>
   </section>
 
   <!-- One card per probe. Every probe in range is tracked at once: the app

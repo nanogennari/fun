@@ -1,5 +1,5 @@
 /**
- * Multi-probe state for F.U.N.
+ * Multi-probe state for F.U.Ninja
  *
  * One BLE scan surfaces every probe in range, so the registry tracks them all
  * simultaneously and the UI decides what to show. Probes are keyed by the

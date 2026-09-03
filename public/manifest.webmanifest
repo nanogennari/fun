@@ -1,6 +1,6 @@
 {
-  "name": "F.U.N.",
-  "short_name": "F.U.N.",
+  "name": "F.U.Ninja",
+  "short_name": "F.U.Ninja",
   "description": "Read a Ninja ProChef wireless thermometer in the browser over Web Bluetooth.",
   "start_url": "./",
   "scope": "./",

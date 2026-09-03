@@ -6,7 +6,7 @@ Everything below was obtained passively, by observing advertisements from the
 probe with standard Linux Bluetooth tooling. No firmware was extracted and no
 protection was circumvented.
 
-This is the specification [F.U.N.](README.md) implements. `public/js/protocol.js`
+This is the specification [F.U.Ninja](README.md) implements. `public/js/protocol.js`
 is the executable form of §3 and §4; if the two ever disagree, this document is
 wrong and should be corrected.
 

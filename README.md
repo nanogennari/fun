@@ -1,4 +1,4 @@
-# F.U.N.
+# F.U.Ninja
 
 A mobile web app that reads a **Ninja ProChef WP100** wireless meat thermometer
 directly in the browser, over Web Bluetooth. No vendor app, no account, no
@@ -15,7 +15,7 @@ payload layout, temperature scale, evidence, and what is still unknown.
 
 ## ⚠ It needs an experimental Chrome flag
 
-F.U.N. reads **BLE advertisements**, because that is where the ProChef puts its
+F.U.Ninja reads **BLE advertisements**, because that is where the ProChef puts its
 telemetry: battery level and both temperatures are broadcast continuously, with
 no connection required ([PROTOCOL.md §2](PROTOCOL.md)).
 
@@ -59,6 +59,12 @@ There is no polyfill possible — this needs OS-level radio access.
 
 ## What it does
 
+- **Guided setup.** A readiness checklist on first load, which *verifies* what
+  it can — browser support, secure context, whether the experimental flag is
+  actually on, whether an adapter is present — and marks the one thing it
+  cannot check (Android's "Nearby devices" permission) as exactly that, rather
+  than guessing. It disappears once a probe is found, and comes back from the
+  **?** button.
 - **Live readings from both sensors** — the probe has a food-interior sensor and
   an ambient/grill-air sensor, and both are shown side by side.
 - **Several probes at once**, each with its own card, history and nickname.
@@ -293,7 +299,9 @@ be used to infer position), and while Android 12+ separated the two with
 `BLUETOOTH_SCAN`, some vendor builds still want location enabled.
 
 The app diagnoses this case and shows the steps inline, rather than passing
-Chrome's raw message through.
+Chrome's raw message through. It is also listed in the in-app setup checklist
+(the **?** button) as a step that cannot be verified from the browser — because
+there is no API to query it.
 
 ### A probe appears but both temperatures show `--`
 
