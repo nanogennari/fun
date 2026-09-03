@@ -124,27 +124,55 @@ cloudflared tunnel --url http://localhost:8788
 
 ---
 
-## Deploying to Cloudflare Pages
+## Deploying to Cloudflare
 
-No build step; `public/` is served as-is, over HTTPS, which is what Web
-Bluetooth requires.
+Deployed as an **assets-only Worker** using [Workers Static
+Assets](https://developers.cloudflare.com/workers/static-assets/). There is no
+build step and no Worker script — `public/` ships as-is, over HTTPS, which is
+what Web Bluetooth requires.
+
+```toml
+# wrangler.toml
+name = "fun"
+compatibility_date = "2026-09-03"
+
+[assets]
+directory = "./public"
+```
+
+Note there is deliberately no `main` entry point: Cloudflare serves the
+directory directly. Adding `main` would mean writing a `fetch` handler.
 
 **From the CLI:**
 
 ```bash
 npx wrangler login
-npm run deploy
+npm run deploy          # wrangler deploy
 ```
 
-**Or connect the GitHub repo** in the Cloudflare dashboard:
+**Or connect the Git repo** (Workers → your Worker → Settings → Builds). The
+defaults already match this project:
 
 | Setting | Value |
 |---|---|
-| Framework preset | None |
-| Build command | *(leave empty)* |
-| Build output directory | `public` |
+| Build command | *(empty)* |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | `/` |
+| Production branch | `main` |
 
-`wrangler.toml` already declares `pages_build_output_dir = "public"`.
+### If you would rather use Cloudflare Pages
+
+Pages also works, but it is a different product with a different deploy
+command, and the two configs are mutually exclusive. Swap `[assets]` in
+`wrangler.toml` for:
+
+```toml
+pages_build_output_dir = "public"
+```
+
+…and set the deploy command to `npx wrangler pages deploy public`. Cloudflare
+now steers new static projects toward Workers Static Assets, which is why this
+repo defaults to it.
 
 ### Headers
 
@@ -155,11 +183,11 @@ or style) along with:
 Permissions-Policy: bluetooth=(self)
 ```
 
-Web Bluetooth is gated by that permission policy. If you put this behind a
-proxy, embed it in an iframe, or serve it from somewhere other than Pages, that
-header has to survive or scanning will be blocked.
-
----
+Web Bluetooth is gated by that permission policy. Workers Static Assets parses
+`_headers` rather than serving it, and applies the rules to asset responses —
+but **only because the file sits inside the assets directory**, so do not move
+it out of `public/`. If you put this behind a proxy or embed it in an iframe,
+that header has to survive or scanning will be blocked.
 
 ## Tests
 

@@ -20,9 +20,9 @@
   },
   "scripts": {
     "serve": "python3 -m http.server 8788 --directory public",
-    "dev": "wrangler pages dev public --port 8788",
+    "dev": "wrangler dev",
     "test": "node --test test/",
-    "deploy": "wrangler pages deploy public --project-name fun"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

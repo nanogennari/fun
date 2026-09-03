@@ -1,7 +1,17 @@
-# Cloudflare Pages project config.
+# Cloudflare Workers Static Assets config.
 #
-# There is no build step: the app is plain ES modules, so `public/` is served
-# as-is. Cloudflare Pages serves it over HTTPS, which Web Bluetooth requires.
+# There is no build step: the app is plain ES modules, so `public/` ships as-is.
+#
+# Note there is deliberately no `main` entry point. This is an assets-only
+# Worker -- Cloudflare serves the directory directly with no Worker script in
+# front of it. Adding `main` would require writing a fetch handler.
+#
+# `public/_headers` is honoured by Workers Static Assets: it is parsed rather
+# than served, and its rules are applied to asset responses. That file carries
+# the CSP and `Permissions-Policy: bluetooth=(self)`, which Web Bluetooth needs,
+# so it must not be moved out of the assets directory.
 name = "fun"
 compatibility_date = "2026-09-03"
-pages_build_output_dir = "public"
+
+[assets]
+directory = "./public"
