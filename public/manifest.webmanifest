@@ -1,0 +1,19 @@
+{
+  "name": "F.U.N.",
+  "short_name": "F.U.N.",
+  "description": "Read a Ninja ProChef wireless thermometer in the browser over Web Bluetooth.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1113",
+  "theme_color": "#0f1113",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

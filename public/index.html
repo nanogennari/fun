@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover + safe-area insets so the layout survives notches and
+     the Android gesture bar. user-scalable is left on: this gets used with
+     greasy hands in bad light. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1113">
+<meta name="description" content="Read a Ninja ProChef wireless thermometer in the browser over Web Bluetooth.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>F.U.N.</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1 class="brand">F.U.N.</h1>
+  <div class="topbar-actions">
+    <button id="unit-toggle" class="chip" type="button" aria-label="Toggle temperature unit">
+      <span id="unit-label">°C</span>
+    </button>
+    <button id="wake-toggle" class="chip" type="button" aria-pressed="false"
+            aria-label="Keep screen awake" hidden>
+      <span aria-hidden="true">☀</span><span class="chip-text">Awake</span>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- Shown when requestLEScan is unavailable: wrong browser, no flag, or
+       insecure origin. Explains rather than silently doing nothing. -->
+  <section id="unsupported" class="card notice" hidden>
+    <h2 id="unsupported-title">Bluetooth unavailable</h2>
+    <p id="unsupported-body"></p>
+    <div id="unsupported-flag" hidden>
+      <code class="flag" id="flag-url"></code>
+      <button id="copy-flag" class="btn btn-ghost" type="button">Copy address</button>
+      <p class="hint">Chrome blocks links to <code>chrome://</code> pages, so this
+        has to be pasted into the address bar by hand. Relaunch the browser
+        afterwards.</p>
+    </div>
+  </section>
+
+  <section id="scan-panel" class="scan-panel">
+    <button id="scan-btn" class="btn btn-primary btn-lg" type="button">
+      Start scanning
+    </button>
+    <p id="scan-status" class="hint" role="status" aria-live="polite">
+      Switch a probe on and take it out of its dock.
+    </p>
+  </section>
+
+  <section id="empty" class="card empty" hidden>
+    <h2>No probes yet</h2>
+    <p>Probes advertise only about every <strong>10 seconds</strong>, so it can
+      take a moment for one to appear. Keep the phone within a few metres.</p>
+  </section>
+
+  <!-- One card per probe. Every probe in range is tracked at once: the app
+       reads advertisements rather than connecting, so watching several costs
+       no more than watching one. -->
+  <section id="probes" class="probes" aria-live="polite"></section>
+
+</main>
+
+<footer class="footer">
+  <p>Reads BLE advertisements only &mdash; no pairing, no connection.</p>
+</footer>
+
+<template id="probe-card-template">
+  <article class="card probe" data-probe-id="">
+    <div class="probe-head">
+      <div class="probe-ident">
+        <button class="probe-name" type="button" title="Rename"></button>
+        <div class="probe-meta">
+          <span class="badge" data-role="status">offline</span>
+          <span data-role="battery"></span>
+          <span data-role="age"></span>
+        </div>
+      </div>
+      <label class="switch" title="Show this probe">
+        <input type="checkbox" data-role="selected" checked>
+        <span class="switch-track" aria-hidden="true"></span>
+      </label>
+    </div>
+
+    <div class="readings">
+      <div class="reading reading-food">
+        <span class="reading-label">Food</span>
+        <span class="reading-value" data-role="tip">--</span>
+        <span class="reading-unit" data-role="tip-unit">°C</span>
+      </div>
+      <div class="reading reading-ambient">
+        <span class="reading-label">Ambient</span>
+        <span class="reading-value" data-role="ambient">--</span>
+        <span class="reading-unit" data-role="ambient-unit">°C</span>
+      </div>
+    </div>
+
+    <details class="probe-more">
+      <summary>Details</summary>
+      <dl class="kv">
+        <dt>Probe ID</dt><dd data-role="probe-id"></dd>
+        <dt>Signal</dt><dd data-role="rssi"></dd>
+        <dt>Raw counts</dt><dd data-role="raw"></dd>
+        <dt>Samples</dt><dd data-role="samples"></dd>
+      </dl>
+      <div class="probe-actions">
+        <button class="btn btn-ghost" data-role="export" type="button">Export CSV</button>
+        <button class="btn btn-ghost" data-role="clear" type="button">Clear history</button>
+        <button class="btn btn-ghost btn-danger" data-role="forget" type="button">Forget</button>
+      </div>
+      <p class="hint">&ldquo;Food&rdquo; and &ldquo;Ambient&rdquo; are inferred
+        from how the two sensors behaved while cooling, not yet confirmed. If
+        they look swapped, trust the raw counts.</p>
+    </details>
+  </article>
+</template>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

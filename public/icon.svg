@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="F.U.N.">
+  <rect width="512" height="512" rx="96" fill="#0f1113"/>
+  <!-- probe body -->
+  <rect x="232" y="96" width="48" height="228" rx="24" fill="#2e343a"/>
+  <!-- mercury column, warm like the food reading in the UI -->
+  <rect x="244" y="150" width="24" height="182" rx="12" fill="#ff8a4c"/>
+  <!-- bulb -->
+  <circle cx="256" cy="372" r="62" fill="#ff8a4c"/>
+  <!-- wireless arcs, cool like the ambient reading -->
+  <g fill="none" stroke="#56b6ff" stroke-width="22" stroke-linecap="round">
+    <path d="M330 150a86 86 0 0 1 0 122"/>
+    <path d="M182 272a86 86 0 0 1 0-122"/>
+  </g>
+</svg>

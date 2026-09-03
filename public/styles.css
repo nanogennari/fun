@@ -1,0 +1,372 @@
+/* F.U.N. -- mobile-first styling.
+ *
+ * Dark by default: this gets used at a grill or in a kitchen at night, where a
+ * white screen is unpleasant and wrecks night vision. Sizing uses clamp() so
+ * the big numbers stay readable from arm's length on a phone but do not become
+ * absurd if the page is opened on a desktop.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0f1113;
+  --surface: #191d21;
+  --surface-2: #22272c;
+  --line: #2e343a;
+
+  --text: #e8eaed;
+  --muted: #9aa0a6;
+
+  /* Warm for the food interior, cool for the surroundings. The pairing is
+   * intuitive, and the two are also distinguished by label and position, so it
+   * does not rely on colour perception alone. */
+  --food: #ff8a4c;
+  --ambient: #56b6ff;
+
+  --live: #4ade80;
+  --stale: #fbbf24;
+  --offline: #6b7280;
+  --danger: #f87171;
+
+  --radius: 14px;
+  --tap: 48px; /* minimum comfortable touch target */
+
+  --pad-top: max(12px, env(safe-area-inset-top));
+  --pad-bottom: max(16px, env(safe-area-inset-bottom));
+  --pad-x: max(14px, env(safe-area-inset-left), env(safe-area-inset-right));
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* Removes the 300ms grey flash on tap without disabling focus styles. */
+  -webkit-tap-highlight-color: transparent;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------------------------------------------------------- topbar */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: var(--pad-top) var(--pad-x) 12px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.topbar-actions { display: flex; gap: 8px; }
+
+.chip {
+  min-height: 40px;
+  min-width: 52px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--live) 22%, var(--surface));
+  border-color: color-mix(in srgb, var(--live) 55%, var(--line));
+}
+.chip-text { font-size: 0.85rem; }
+
+/* ---------------------------------------------------------------- layout */
+
+#main {
+  flex: 1;
+  padding: 14px var(--pad-x) var(--pad-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Keep content comfortable if this is opened on a tablet or desktop. */
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.notice { border-color: color-mix(in srgb, var(--stale) 45%, var(--line)); }
+.notice h2 { margin: 0 0 8px; font-size: 1.05rem; }
+.notice p { margin: 0 0 10px; color: var(--muted); }
+
+.flag {
+  display: block;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  /* Long chrome:// URL must not blow out the layout on a narrow screen. */
+  overflow-wrap: anywhere;
+}
+
+.hint { margin: 8px 0 0; color: var(--muted); font-size: 0.85rem; }
+
+.empty h2 { margin: 0 0 6px; font-size: 1.05rem; }
+.empty p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  min-height: var(--tap);
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:active { transform: scale(0.985); }
+
+.btn-primary {
+  background: var(--text);
+  color: #101214;
+  border-color: var(--text);
+}
+.btn-primary[data-scanning="true"] {
+  background: color-mix(in srgb, var(--live) 24%, var(--surface));
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--live) 55%, var(--line));
+}
+
+.btn-lg { width: 100%; min-height: 56px; font-size: 1.05rem; }
+.btn-ghost { background: transparent; font-weight: 500; }
+.btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+
+.scan-panel { display: flex; flex-direction: column; gap: 4px; }
+.scan-panel .hint { text-align: center; }
+
+/* ---------------------------------------------------------------- probes */
+
+.probes { display: flex; flex-direction: column; gap: 14px; }
+
+.probe { padding: 14px 16px 10px; }
+.probe[data-status="offline"] { opacity: 0.62; }
+.probe[data-selected="false"] .readings { display: none; }
+
+.probe-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.probe-ident { min-width: 0; }
+
+.probe-name {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.02rem;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  /* A long nickname must truncate, not reflow the card. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.probe-name::after { content: " \270E"; color: var(--muted); font-size: 0.8em; }
+
+.probe-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--offline) 30%, transparent);
+  color: var(--muted);
+}
+.probe[data-status="live"] .badge {
+  background: color-mix(in srgb, var(--live) 22%, transparent);
+  color: var(--live);
+}
+.probe[data-status="stale"] .badge {
+  background: color-mix(in srgb, var(--stale) 22%, transparent);
+  color: var(--stale);
+}
+
+/* toggle switch -- 48px tall hit area, visually smaller */
+.switch { position: relative; display: inline-flex; width: 52px; height: var(--tap); flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch-track {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  translate: 0 -50%;
+  width: 46px;
+  height: 27px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: background 0.15s;
+}
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: translate 0.15s, background 0.15s;
+}
+.switch input:checked + .switch-track {
+  background: color-mix(in srgb, var(--live) 30%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--live) 50%, var(--line));
+}
+.switch input:checked + .switch-track::after { translate: 19px 0; background: var(--live); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- readings */
+
+.readings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0 6px;
+}
+
+.reading {
+  display: grid;
+  grid-template-areas: "label label" "value unit";
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.reading-label {
+  grid-area: label;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.reading-value {
+  grid-area: value;
+  /* Big enough to read at arm's length; tabular so digits do not jitter as the
+   * value changes. */
+  font-size: clamp(2rem, 12vw, 3.1rem);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.reading-unit { grid-area: unit; padding-left: 4px; color: var(--muted); font-size: 0.9rem; }
+
+.reading-food { border-color: color-mix(in srgb, var(--food) 40%, var(--line)); }
+.reading-food .reading-value,
+.reading-food .reading-label { color: var(--food); }
+
+.reading-ambient { border-color: color-mix(in srgb, var(--ambient) 35%, var(--line)); }
+.reading-ambient .reading-value,
+.reading-ambient .reading-label { color: var(--ambient); }
+
+/* ---------------------------------------------------------------- details */
+
+.probe-more { margin-top: 4px; border-top: 1px solid var(--line); }
+.probe-more summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 4px 0 12px;
+  font-size: 0.85rem;
+}
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.probe-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.probe-actions .btn { min-height: 42px; padding: 0 14px; font-size: 0.88rem; }
+
+/* ---------------------------------------------------------------- footer */
+
+.footer {
+  padding: 14px var(--pad-x) var(--pad-bottom);
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
+.footer p { margin: 0; }
+.footer a { color: var(--muted); }
+
+/* Single column for the two readings on very narrow screens, so the numbers
+ * keep their size instead of shrinking to fit side by side. */
+@media (max-width: 340px) {
+  .readings { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .btn:active { transform: none; }
+}

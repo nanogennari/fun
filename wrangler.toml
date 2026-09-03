@@ -1,0 +1,7 @@
+# Cloudflare Pages project config.
+#
+# There is no build step: the app is plain ES modules, so `public/` is served
+# as-is. Cloudflare Pages serves it over HTTPS, which Web Bluetooth requires.
+name = "fun"
+compatibility_date = "2026-09-03"
+pages_build_output_dir = "public"
