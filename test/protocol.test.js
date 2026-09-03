@@ -10,7 +10,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { cToRaw, fToRaw, fmtTemp, parseMfgData, rawToC, rawToF } from '../public/js/protocol.js';
+import {
+  cToRaw, fToRaw, fmtTemp, isUnsetProbeId, parseMfgData, rawToC, rawToF,
+} from '../public/js/protocol.js';
 
 const hex = (s) => new Uint8Array(s.match(/../g).map((b) => parseInt(b, 16)));
 
@@ -115,4 +117,45 @@ test('fmtTemp shows one decimal and handles missing data', () => {
   assert.equal(fmtTemp(r, 'tip', 'f'), '76.1');
   assert.equal(fmtTemp(r, 'tip', 'c'), '24.5');
   assert.equal(fmtTemp(null, 'tip', 'c'), '--');
+});
+
+// ---- power-on placeholder frame -----------------------------------------
+// Observed in the field: a probe being switched on broadcasts a frame with a
+// valid type and battery but an all-zero id and both temperatures at 0xFFFF.
+// Accepting it created a phantom probe keyed "000000000000" showing "--".
+
+test('rejects the power-on placeholder frame', () => {
+  const placeholder = hex('06640101000000000000ffffffff');
+  // exactly what the phone saw: id all zeros, both sensors 0xFFFF (-1 signed)
+  const b = hex('066401010000000000000000ffff');
+  b.set([0, 0, 0, 0, 0, 0], 4);
+  b[10] = 0xff; b[11] = 0xff; b[12] = 0xff; b[13] = 0xff;
+  assert.equal(parseMfgData(b), null, 'phantom probe must not be created');
+  assert.equal(placeholder.length, 14); // fixture sanity
+});
+
+test('rejects an all-0xFF probe id too', () => {
+  const b = hex('066401015ce1024db36cf902d802');
+  b.set([0xff, 0xff, 0xff, 0xff, 0xff, 0xff], 4);
+  assert.equal(parseMfgData(b), null);
+});
+
+test('a real frame with a valid id still parses when a sensor reads 0xFFFF', () => {
+  // Only the id makes a frame unusable. A real probe reporting one bad sensor
+  // must still be shown, with that sensor blank.
+  const b = hex('066401015ce1024db36cf902d802');
+  b[10] = 0xff; b[11] = 0xff;
+  const r = parseMfgData(b);
+  assert.ok(r, 'must not drop a frame from an identified probe');
+  assert.equal(r.probeId, '5ce1024db36c');
+  assert.equal(r.tipC, null);
+  assert.notEqual(r.ambientC, null);
+});
+
+test('isUnsetProbeId recognises the unpopulated patterns', () => {
+  assert.equal(isUnsetProbeId('000000000000'), true);
+  assert.equal(isUnsetProbeId('FFFFFFFFFFFF'), true);
+  assert.equal(isUnsetProbeId(''), true);
+  assert.equal(isUnsetProbeId(null), true);
+  assert.equal(isUnsetProbeId('5ce1024db36c'), false);
 });

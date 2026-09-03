@@ -14,11 +14,21 @@
  */
 
 /** Readings arrive roughly every 10 s; see PROTOCOL.md section 6. */
+import { isUnsetProbeId } from './protocol.js';
+
 export const STALE_MS = 35_000;
 export const OFFLINE_MS = 120_000;
 
 /** ~14 h at one sample per 10 s. Well inside what localStorage will hold. */
 const MAX_SAMPLES = 5000;
+
+/**
+ * Re-arm margin, in raw counts (tenths of degF). 18 counts is 1.8 degF ~ 1 degC.
+ * After an alarm is acknowledged it only re-arms once the food drops this far
+ * back below target, so a reading hovering on the threshold cannot retrigger
+ * the alarm every ten seconds.
+ */
+const ALARM_REARM_MARGIN = 18;
 
 const LS_KEY = 'fun.state.v1';
 
@@ -49,6 +59,8 @@ export class ProbeRegistry extends EventTarget {
         last: reading,
         samples: [],
         selected: true, // a newly discovered probe is shown by default
+        targetRaw: null,
+        alarmState: 'idle', // idle -> fired -> acked
       };
       this.probes.set(key, p);
     }
@@ -71,6 +83,8 @@ export class ProbeRegistry extends EventTarget {
       s.push([reading.t, reading.rawA, reading.rawB, reading.batteryPct]);
       if (s.length > MAX_SAMPLES) s.splice(0, s.length - MAX_SAMPLES);
     }
+
+    this._evaluateAlarm(p);
 
     this._scheduleSave();
     this.dispatchEvent(new CustomEvent(isNew ? 'probe-added' : 'probe-updated', { detail: p }));
@@ -107,6 +121,57 @@ export class ProbeRegistry extends EventTarget {
     p.nickname = nickname.slice(0, 32);
     this._scheduleSave();
     this.dispatchEvent(new CustomEvent('change', { detail: p }));
+  }
+
+  /**
+   * Set (or clear, with null) the food-temperature target in raw counts.
+   * Always resets the alarm, so a new target can fire even if the previous one
+   * was already acknowledged.
+   */
+  setTarget(probeId, raw) {
+    const p = this.probes.get(probeId);
+    if (!p) return;
+    p.targetRaw = raw === null || raw === undefined ? null : Math.round(raw);
+    p.alarmState = 'idle';
+    // Re-check at once: a target set below the current temperature should fire
+    // immediately rather than waiting for the next advertisement ~10s later.
+    this._evaluateAlarm(p);
+    this._scheduleSave();
+    this.dispatchEvent(new CustomEvent('change', { detail: p }));
+  }
+
+  acknowledgeAlarm(probeId) {
+    const p = this.probes.get(probeId);
+    if (!p || p.alarmState !== 'fired') return;
+    p.alarmState = 'acked';
+    this.dispatchEvent(new CustomEvent('change', { detail: p }));
+  }
+
+  /** Any probe currently sounding. */
+  firing() {
+    return this.list().filter((p) => p.alarmState === 'fired');
+  }
+
+  /**
+   * Decide whether the food sensor has reached its target.
+   *
+   * Guards on tipC rather than rawA: a disconnected sensor reports a sentinel
+   * (0x7FFF), which as a raw number is enormous and would trip every target.
+   */
+  _evaluateAlarm(p) {
+    if (p.targetRaw === null || p.targetRaw === undefined) {
+      p.alarmState = 'idle';
+      return;
+    }
+    if (!p.last || p.last.tipC === null || p.last.tipC === undefined) return;
+
+    const raw = p.last.rawA;
+    if (p.alarmState === 'idle' && raw >= p.targetRaw) {
+      p.alarmState = 'fired';
+      this.dispatchEvent(new CustomEvent('alarm-fired', { detail: p }));
+    } else if (p.alarmState === 'acked' && raw < p.targetRaw - ALARM_REARM_MARGIN) {
+      p.alarmState = 'idle';
+    }
   }
 
   setUnit(unit) {
@@ -178,6 +243,7 @@ export class ProbeRegistry extends EventTarget {
         lastSeen: p.lastSeen,
         selected: p.selected,
         samples: p.samples,
+        targetRaw: p.targetRaw ?? null,
       }));
       localStorage.setItem(LS_KEY, JSON.stringify({ unit: this.unit, probes }));
     } catch {
@@ -193,9 +259,16 @@ export class ProbeRegistry extends EventTarget {
       const data = JSON.parse(raw);
       this.unit = data.unit === 'f' ? 'f' : 'c';
       for (const p of data.probes ?? []) {
+        // Drop phantoms persisted by an earlier build that accepted the
+        // power-on placeholder frame.
+        if (isUnsetProbeId(p.probeId)) continue;
         this.probes.set(p.probeId, {
           ...p,
           samples: Array.isArray(p.samples) ? p.samples : [],
+          targetRaw: p.targetRaw ?? null,
+          // Never restore a fired alarm: there is no live reading yet, so an
+          // alarm on load would be about a temperature from a previous session.
+          alarmState: 'idle',
           // No reading yet this session -- the card shows "offline" until one
           // arrives, rather than resurrecting a stale temperature as current.
           last: null,

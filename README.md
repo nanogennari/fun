@@ -65,6 +65,11 @@ There is no polyfill possible — this needs OS-level radio access.
   cannot check (Android's "Nearby devices" permission) as exactly that, rather
   than guessing. It disappears once a probe is found, and comes back from the
   **?** button.
+- **Target temperature with an alarm.** Set a food target per probe; when it is
+  reached the card alarms with sound, vibration and a banner until you stop it.
+- **History chart** in each probe's Details panel, with a scrub-to-read
+  crosshair, a values table, and tappable legend entries to drop a series and
+  rescale the axis.
 - **Live readings from both sensors** — the probe has a food-interior sensor and
   an ambient/grill-air sensor, and both are shown side by side.
 - **Several probes at once**, each with its own card, history and nickname.
@@ -206,7 +211,22 @@ npm test        # node --test, no dependencies
   examples. It covers the `DataView` shapes Chrome actually hands over,
   including a non-zero `byteOffset`, negative temperatures, and malformed input.
 - `test/store.test.js` covers the multi-probe registry, persistence, duplicate
-  suppression and staleness.
+  suppression, staleness, and the alarm state machine (latching, acknowledge,
+  re-arm hysteresis, and the disconnected-sensor sentinel that would otherwise
+  trip every target).
+- `test/chart.test.js` covers the chart's pure geometry: tick selection,
+  downsampling that preserves spikes, axis rescaling when a series is hidden,
+  and the flat-trace and single-sample edge cases.
+- `test/wiring.test.js` is the "page loads but nothing works" guard — see below.
+
+`dev/` holds two harnesses that render the real components against synthetic
+cook data, for screenshotting in headless Chromium:
+
+```bash
+npm run serve
+chromium --headless=new --screenshot=out.png --window-size=390,1500 \
+  --virtual-time-budget=5000 http://localhost:8788/../dev/chart-preview.html
+```
 
 ---
 
@@ -223,8 +243,11 @@ npm test        # node --test, no dependencies
 │   └── js/
 │       ├── protocol.js        # payload parser -- the executable form of PROTOCOL.md
 │       ├── ble.js             # requestLEScan wrapper, capability detection, wake lock
-│       ├── store.js           # multi-probe registry, history, persistence
+│       ├── store.js           # multi-probe registry, history, targets, alarm state
+│       ├── chart.js           # history chart: pure geometry + canvas renderer
+│       ├── alarm.js           # Web Audio beeper + vibration
 │       └── app.js             # UI controller
+├── dev/                       # screenshot harnesses; NOT deployed
 ├── test/
 ├── PROTOCOL.md                # the reverse-engineered protocol
 ├── wrangler.toml
@@ -243,6 +266,13 @@ npm test        # node --test, no dependencies
   with greasy hands in bad light.
 - **Warm colour for the food sensor, cool for ambient**, reinforced by label and
   position so it never depends on colour perception alone.
+- **Chart marks use their own validated steps.** The bright UI colours sit
+  outside the dark-mode lightness band, so the chart uses the documented dark
+  steps of the same two hues — checked for the lightness band, chroma floor,
+  colourblind separation (worst-pair ΔE 26.8 under protanopia) and 3:1 contrast.
+  Both traces share **one** y axis: they are the same measure, and a second
+  scale would invent a correlation. To see detail in the food trace when the pit
+  is 100° hotter, tap the legend to drop the pit trace and let the axis rescale.
 - **History stores raw sensor counts, not converted degrees.** If the
   temperature scale is ever corrected, old recordings reinterpret correctly
   instead of having today's conversion baked in.
@@ -256,11 +286,15 @@ npm test        # node --test, no dependencies
 
 Worth reading before filing a bug.
 
-- **"Food" vs "Ambient" is inferred, not confirmed.** The mapping comes from
-  observing which sensor drifted while the probe cooled in free air
-  ([PROTOCOL.md §5](PROTOCOL.md)). Each card's *Details* panel shows the raw
-  counts, so you can always check. Confirming it properly is a five-second
-  experiment: grip the tip and see which number moves.
+- **The alarm only sounds while the page is open.** This is not a shortcut:
+  closing the page stops the BLE scan, so there would be no temperature to
+  alarm on. Use the wake lock (the ☀ button) to keep the page alive through a
+  cook. A background push notification would need both a service worker and a
+  server that knew the temperature, and neither exists here.
+- **Sound needs one tap first.** Browsers only unlock audio inside a user
+  gesture, so audio is primed when you press *Set* on a target. If it was
+  somehow blocked, the alarm banner says so instead of failing silently — the
+  vibration and banner still fire.
 - **The temperature scale is corroborated at a single point** — raw 761 against
   a reference thermometer reading 24.2 °C. That cannot detect a gain error. An
   ice-water check (0 °C should read raw ≈ 320) would settle it.
@@ -310,6 +344,20 @@ The payload is in the scan response, not the primary advertisement
 manufacturer data, the scanner is not picking up `SCAN_RSP`. Open the card's
 **Details** panel: if *Raw counts* also shows `--`, no payload arrived at all.
 
+### A probe stops updating, or a duplicate appears
+
+Both were real bugs, fixed:
+
+- **A phantom probe with ID `000000000000`** and raw counts `A -1 / B -1` came
+  from the placeholder frame a probe broadcasts while powering on
+  ([PROTOCOL.md §3.1](PROTOCOL.md)). Frames without a probe id are now
+  discarded, and any phantom already saved is purged on load.
+- **One probe going quiet when another was switched off** was Chrome stopping
+  the LE scan entirely. The scanner now watches `BluetoothLEScan.active` and
+  restarts itself, showing "Scan dropped by the browser — resuming…" while it
+  does. If the browser demands a fresh tap, the button changes to *Resume
+  scanning* rather than leaving you looking at stale numbers.
+
 ### Nothing appears for 10–15 seconds
 
 Expected. The advertising interval is around 10 s ([PROTOCOL.md
@@ -325,14 +373,14 @@ enabling it. See the top of this README.
 
 ## Roadmap
 
-Recording already runs for every probe from its first reading, so the data is
-waiting:
-
-1. **Plot temperature over time**, per probe, both sensors.
-2. **Area under the curve** — time-at-temperature, to estimate doneness and
-   pasteurization rather than judging by instantaneous temperature alone.
-3. **Target temperature and alarms.** In-page is straightforward; making the
-   probe itself beep would need GATT ([PROTOCOL.md §7](PROTOCOL.md)).
+1. ~~Plot temperature over time.~~ Done — see each probe's Details panel.
+2. ~~Target temperature and alarm.~~ Done, in-page. Making the *probe itself*
+   beep would need GATT ([PROTOCOL.md §7](PROTOCOL.md)).
+3. **Area under the curve** — time-at-temperature, to estimate doneness and
+   pasteurization rather than judging by instantaneous temperature alone. The
+   data is already recorded in raw counts, so this is purely a matter of doing
+   the integral over `samples`.
+4. Multiple targets per probe (e.g. warn at 60 °C, alarm at 68 °C).
 
 ---
 

@@ -133,3 +133,162 @@ test('surviving corrupt persisted state', () => {
   const r = new ProbeRegistry(); // must not throw
   assert.equal(r.probes.size, 0);
 });
+
+// ---------------------------------------------------------------- alarms
+
+const { cToRaw } = await import('../public/js/protocol.js');
+
+/** Feed a reading with a given food temperature in Celsius. */
+function feed(r, c, ambientC = 100) {
+  return r.ingest(parseMfgData(frame(A, cToRaw(c), cToRaw(ambientC))));
+}
+
+test('alarm fires when the food sensor reaches the target', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  r.setTarget(A, cToRaw(60));
+  assert.equal(r.get(A).alarmState, 'idle');
+
+  let fired = 0;
+  r.addEventListener('alarm-fired', () => { fired++; });
+
+  feed(r, 59.5);
+  assert.equal(r.get(A).alarmState, 'idle');
+  feed(r, 60.2);
+  assert.equal(r.get(A).alarmState, 'fired');
+  assert.equal(fired, 1);
+});
+
+test('a fired alarm does not re-fire on every advertisement', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  let fired = 0;
+  r.addEventListener('alarm-fired', () => { fired++; });
+  r.setTarget(A, cToRaw(60));
+  for (const c of [61, 62, 63, 64]) feed(r, c);
+  assert.equal(fired, 1, 'should latch, not fire once per reading');
+});
+
+test('acknowledging stops the alarm and it does not immediately return', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  r.setTarget(A, cToRaw(60));
+  feed(r, 61);
+  assert.equal(r.get(A).alarmState, 'fired');
+  r.acknowledgeAlarm(A);
+  assert.equal(r.get(A).alarmState, 'acked');
+  // Hovering right on the threshold must not retrigger.
+  for (const c of [60.5, 61, 60.1, 62]) feed(r, c);
+  assert.equal(r.get(A).alarmState, 'acked');
+});
+
+test('alarm re-arms only after dropping clear of the target', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  r.setTarget(A, cToRaw(60));
+  feed(r, 61);
+  r.acknowledgeAlarm(A);
+  feed(r, 59.5);             // inside the re-arm margin, still acked
+  assert.equal(r.get(A).alarmState, 'acked');
+  feed(r, 55);               // clearly below -> re-armed
+  assert.equal(r.get(A).alarmState, 'idle');
+  feed(r, 61);
+  assert.equal(r.get(A).alarmState, 'fired');
+});
+
+test('a target already exceeded fires at once, not on the next advertisement', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 80);
+  let fired = 0;
+  r.addEventListener('alarm-fired', () => { fired++; });
+  r.setTarget(A, cToRaw(60));
+  assert.equal(r.get(A).alarmState, 'fired');
+  assert.equal(fired, 1);
+});
+
+test('changing the target rearms an acknowledged alarm', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  r.setTarget(A, cToRaw(60));
+  feed(r, 61);
+  r.acknowledgeAlarm(A);
+  r.setTarget(A, cToRaw(90));
+  assert.equal(r.get(A).alarmState, 'idle');
+  feed(r, 91);
+  assert.equal(r.get(A).alarmState, 'fired');
+});
+
+test('clearing the target disarms', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  r.setTarget(A, cToRaw(60));
+  feed(r, 61);
+  assert.equal(r.get(A).alarmState, 'fired');
+  r.setTarget(A, null);
+  assert.equal(r.get(A).targetRaw, null);
+  assert.equal(r.get(A).alarmState, 'idle');
+  feed(r, 99);
+  assert.equal(r.get(A).alarmState, 'idle');
+});
+
+test('a disconnected sensor sentinel never trips the target', () => {
+  // 0x7FFF as a raw number is enormous and would clear any target; the guard
+  // is on the decoded temperature being null, not on the raw value.
+  mem.clear();
+  const r = new ProbeRegistry();
+  feed(r, 20);
+  r.setTarget(A, cToRaw(60));
+  const bad = frame(A, 0, cToRaw(100));
+  bad[10] = 0xff; bad[11] = 0x7f;
+  r.ingest(parseMfgData(bad));
+  assert.equal(r.get(A).alarmState, 'idle');
+});
+
+test('target persists across a reload but a fired alarm does not', () => {
+  mem.clear();
+  const r1 = new ProbeRegistry();
+  feed(r1, 20);
+  r1.setTarget(A, cToRaw(60));
+  feed(r1, 61);
+  assert.equal(r1.get(A).alarmState, 'fired');
+  r1._save();
+
+  const r2 = new ProbeRegistry();
+  assert.equal(r2.get(A).targetRaw, cToRaw(60));
+  // Reviving a fired alarm on load would be alarming about a temperature from
+  // a previous session.
+  assert.equal(r2.get(A).alarmState, 'idle');
+});
+
+test('firing() lists only the probes currently sounding', () => {
+  mem.clear();
+  const r = new ProbeRegistry();
+  r.ingest(parseMfgData(frame(A, cToRaw(20), cToRaw(100))));
+  r.ingest(parseMfgData(frame(B, cToRaw(20), cToRaw(100))));
+  r.setTarget(A, cToRaw(30));
+  r.ingest(parseMfgData(frame(A, cToRaw(35), cToRaw(100))));
+  assert.deepEqual(r.firing().map((p) => p.probeId), [A]);
+});
+
+test('a persisted phantom probe is purged on load', () => {
+  // Builds before the placeholder-frame fix wrote these into localStorage.
+  mem.clear();
+  mem.set('fun.state.v1', JSON.stringify({
+    unit: 'c',
+    probes: [
+      { probeId: '000000000000', name: 'Ninja-WP100-R', samples: [], selected: true },
+      { probeId: A, name: 'Ninja-WP100-R', samples: [], selected: true },
+    ],
+  }));
+  const r = new ProbeRegistry();
+  assert.equal(r.probes.size, 1);
+  assert.ok(r.get(A), 'the real probe must survive');
+  assert.equal(r.get('000000000000'), undefined);
+});

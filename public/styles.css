@@ -20,8 +20,20 @@
   /* Warm for the food interior, cool for the surroundings. The pairing is
    * intuitive, and the two are also distinguished by label and position, so it
    * does not rely on colour perception alone. */
+  /* UI text colours for the two sensors. These are large-type readouts, so
+   * they are judged on text contrast, not on the categorical-mark rules. */
   --food: #ff8a4c;
   --ambient: #56b6ff;
+
+  /* Chart MARK colours: the documented dark-mode steps of the same two hues.
+   * Validated against both chart surfaces with the palette validator:
+   * lightness band, chroma floor, CVD separation (worst adjacent dE 26.8
+   * protan), normal-vision floor (dE 31.8) and >=3:1 contrast all pass.
+   * The brighter UI values above sit at L~0.75, outside the dark band, so they
+   * are deliberately NOT reused as mark colours. */
+  --series-food: #d95926;
+  --series-ambient: #3987e5;
+  --chart-surface: #0f1113;
 
   --live: #4ade80;
   --stale: #fbbf24;
@@ -482,3 +494,217 @@ body {
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------------------------------------------------------------- chart
+ *
+ * Mark specs come from the project's dataviz guidance: 2px lines with round
+ * caps, >=8px end dots ringed in the surface colour, hairline solid gridlines,
+ * a legend always present for two series, direct end labels in text ink, and a
+ * crosshair that snaps to the nearest time. Text never wears a series colour;
+ * identity is carried by the coloured key beside it.
+ */
+
+.chart-panel { margin: 4px 0 12px; }
+
+.chart-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 0 0 8px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
+
+/* A line key, mirroring the mark: these series are lines, not filled areas. */
+.legend-key {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  flex: none;
+}
+.legend-key-tip { background: var(--series-food); }
+.legend-key-ambient { background: var(--series-ambient); }
+
+.chart-wrap { position: relative; }
+
+.chart-canvas {
+  display: block;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  /* Let a horizontal scrub drive the crosshair while vertical drags still
+   * scroll the page. */
+  touch-action: pan-y;
+}
+
+.chart-tip {
+  position: absolute;
+  top: 4px;
+  translate: -50% 0;
+  min-width: 108px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.chart-tip-when { color: var(--muted); margin-bottom: 3px; font-size: 0.72rem; }
+.chart-tip-row { display: flex; align-items: center; gap: 6px; }
+/* Value leads, series name follows. */
+.chart-tip-row strong { font-variant-numeric: tabular-nums; }
+.chart-tip-row span:last-child { color: var(--muted); }
+
+/* The accessible path to the numbers: a canvas is opaque to assistive tech. */
+.chart-table { margin-top: 8px; }
+.chart-table summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.chart-table th {
+  text-align: right;
+  padding: 4px 6px;
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.chart-table th:first-child, .chart-table td:first-child { text-align: left; }
+.chart-table td { text-align: right; padding: 4px 6px; }
+
+/* ---------------------------------------------------------------- target + alarm */
+
+.target-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.target-display { margin: 0; display: flex; align-items: baseline; gap: 8px; flex: 1 1 auto; }
+
+.target-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.target-value { font-size: 1rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.probe[data-alarm="off"] .target-value { color: var(--text); }
+
+.target-buttons { display: inline-flex; gap: 6px; }
+.target-row .btn { min-height: 40px; padding: 0 13px; font-size: 0.85rem; }
+
+.target-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+}
+
+.target-input {
+  width: 5.5em;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+/* The spinner arrows waste width on a phone; inputmode already gives a keypad. */
+.target-input::-webkit-outer-spin-button,
+.target-input::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.target-input { appearance: textfield; }
+
+.target-unit { color: var(--muted); font-size: 0.9rem; margin-right: 2px; }
+
+/* A fired alarm is a state, not a series, so it wears the reserved status
+ * colour and always ships with an icon and words -- never colour alone. */
+.alarm-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--line));
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.alarm-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #1a0d0d;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+.alarm-banner .btn {
+  margin-left: auto;
+  min-height: 38px;
+  padding: 0 14px;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #1a0d0d;
+  font-weight: 700;
+}
+
+.probe[data-alarm="firing"] {
+  border-color: color-mix(in srgb, var(--danger) 60%, var(--line));
+}
+/* Acknowledged but still over target: keep a quiet marker so the card does not
+ * look identical to one that never alarmed. */
+.probe[data-alarm="acked"] .target-value { color: var(--stale); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .probe[data-alarm="firing"] { animation: alarm-pulse 1.6s ease-in-out infinite; }
+  @keyframes alarm-pulse {
+    0%, 100% { border-color: color-mix(in srgb, var(--danger) 60%, var(--line)); }
+    50% { border-color: color-mix(in srgb, var(--danger) 20%, var(--line)); }
+  }
+}
+
+/* Legend entries double as series toggles: tapping one hides that trace and
+ * rescales the axis. Colour stays bound to the entity, so the remaining series
+ * is never repainted. */
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.legend-item[aria-pressed="false"] { opacity: 0.45; }
+.legend-item[aria-pressed="false"] span:last-child { text-decoration: line-through; }
+.legend-item:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }

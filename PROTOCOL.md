@@ -136,7 +136,33 @@ Bytes 2 and 3 are the prime suspects for a **temperature-unit flag** (°C/°F) o
 a probe index. If they encode the app's unit setting, a reimplementation must
 read them rather than assume — see §7, experiment 2.
 
-### 3.1 Signedness
+### 3.1 The power-on placeholder frame
+
+A probe that has just been switched on emits a frame that is structurally valid
+but carries no data:
+
+```
+06 64 01 01 00 00 00 00 00 00 ff ff ff ff
+│  │  │  │  └──── id all zeros ────┘  └── both sensors 0xFFFF ──┘
+│  │  └──┴─ 01 01, as normal
+│  └─ 0x64, a plausible battery reading
+└─ 0x06, the normal telemetry frame type
+```
+
+Frame type and battery look ordinary, so a parser that only checks those will
+accept it. Observed consequence: a phantom device keyed on probe id
+`000000000000` appears alongside the real one and never goes away, showing `--`
+for both temperatures.
+
+**Treat an all-zero (or all-`0xFF`) probe id as "not populated" and discard the
+frame.** The id is the only durable device identity — see §3.2 — so a frame
+without one cannot be attributed to a probe anyway.
+
+Note this is *not* the same as a sensor sentinel. A frame from an identified
+probe with one sensor reading `0xFFFF` is real and should be shown with that
+sensor blank; only the missing **id** makes a frame unusable.
+
+### 3.2 Signedness
 
 Read as **signed** int16. Tenths of °F puts 0 °F at raw `0`, so any reading
 below 0 °F (a freezer check, ≈ −18 °C = −0.4 °F = raw `−4`) needs a signed
@@ -204,10 +230,14 @@ A drifted steadily downward (770 → 757, i.e. 25.0 → 24.3 °C) while sensor B
 essentially constant at 728 (22.7 °C). A cooling probe tip behaves exactly like
 A; an ambient sensor already at room temperature behaves exactly like B.
 
-**So: A = tip, B = ambient — inferred, not confirmed.** The decisive test is to
-warm one sensor in isolation (grip the tip only) and see which value moves.
-Implementations should expose the raw A/B values alongside the named ones so a
-correction does not break callers.
+**So: A = tip, B = ambient.** Originally inferred from the drift above, and
+since **confirmed by the owner in normal use** — with the probe in food the two
+values behave as labelled. That is field confirmation rather than a controlled
+isolation test, but combined with the drift evidence it is enough to treat the
+mapping as settled.
+
+Implementations should still expose the raw A/B values alongside the named ones,
+so anything built on top survives a future correction.
 
 The steady ~4 °F offset between A and B while both sat in the same room is
 unexplained. Possibilities: genuine sensor calibration offset, self-heating, or
@@ -331,14 +361,32 @@ Ordered by value.
 2. **Toggle °C/°F in the official app.** Does byte 2 or 3 flip? If the probe
    re-encodes based on a user setting, every implementation must read that flag
    instead of assuming tenths of °F.
-3. **Warm one sensor in isolation.** Confirms the A = tip / B = ambient
-   mapping, which is currently inferred from drift alone.
+3. ~~Warm one sensor in isolation to confirm the A/B mapping.~~ Superseded:
+   confirmed by the owner in normal use (§5).
 4. **Power on a second probe.** Reveals which of bytes 4–9 are per-device, and
    whether the `-R` name suffix varies.
 5. **Observe a partially discharged probe.** Confirms byte 1 is really a
    percentage and not a voltage code or a coarse level.
-6. **Unplug / expose a sensor.** Finds the "no reading" sentinel value.
+6. **Unplug / expose a sensor.** Finds the "no reading" sentinel value. The
+   power-on placeholder (§3.1) uses `0xFFFF`, which hints the sentinel may be
+   the same, but that is not established.
 7. **GATT with explicit connection parameters.** Unlocks control, alarms and
    history.
 8. **Does the advertising rate change while the app is connected?** Determines
    whether ~10 s is a floor or just an idle-mode rate.
+
+## 11. Radio behaviour observed from a browser
+
+Notes specific to reading this device through Web Bluetooth, which are really
+about Chrome rather than the probe, but bite anyone reimplementing this:
+
+- **`requestLEScan` stops on its own.** Switching one probe off was observed to
+  kill the whole scan, leaving a second probe apparently frozen. Backgrounding
+  the page does the same. A scanner must poll `BluetoothLEScan.active` and
+  restart, rather than assuming a started scan stays started.
+- **`keepRepeatedDevices: true` is mandatory.** Without it the browser delivers
+  one advertisement per device and then goes quiet, which looks exactly like a
+  probe that has stopped broadcasting.
+- **Android needs the `BLUETOOTH_SCAN` permission** ("Nearby devices"), which
+  Chrome never prompts for. Without it `requestLEScan` fails with a message
+  about the Bluetooth adapter being unavailable, which misdirects entirely.

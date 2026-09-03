@@ -23,6 +23,22 @@ export const FRAME_TYPE_TELEMETRY = 0x06;
  */
 const SENTINELS = new Set([0x7fff, -0x8000, -1]);
 
+/**
+ * Probe-id values that mean "not populated yet".
+ *
+ * Observed in the field: a probe that has just been switched on broadcasts a
+ * placeholder telemetry frame before its identity and sensors are ready --
+ * correct frame type, plausible battery, but an all-zero id and both
+ * temperatures at 0xFFFF. Accepting it creates a phantom probe keyed on
+ * "000000000000" that sits in the list forever showing "--".
+ */
+const UNSET_PROBE_IDS = new Set(['000000000000', 'ffffffffffff']);
+
+/** True if this id cannot identify a real probe. */
+export function isUnsetProbeId(probeId) {
+  return !probeId || UNSET_PROBE_IDS.has(probeId.toLowerCase());
+}
+
 export const rawToF = (raw) => raw / 10;
 export const rawToC = (raw) => ((raw / 10 - 32) * 5) / 9;
 export const fToRaw = (f) => Math.round(f * 10);
@@ -64,6 +80,10 @@ export function parseMfgData(data, meta = {}) {
   // anywhere else: Web Bluetooth deliberately hides the MAC address, so this is
   // our only durable device identity across sessions and origins.
   const probeId = Array.from(b.slice(4, 10), (x) => x.toString(16).padStart(2, '0')).join('');
+
+  // Drop the power-on placeholder frame. Without an id there is nothing to key
+  // a probe on, and every field in it is a placeholder anyway.
+  if (isUnsetProbeId(probeId)) return null;
 
   const tipRaw = temp(rawA);
   const ambientRaw = temp(rawB);

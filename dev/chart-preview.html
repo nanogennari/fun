@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- Dev harness. NOT deployed: only public/ ships. Renders the real chart
+     component against synthetic cook data so the output can be screenshotted
+     and eyeballed without a probe. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chart preview</title>
+<link rel="stylesheet" href="../public/styles.css">
+<style>
+  body { padding: 12px; max-width: 380px; }
+  h2 { font-size: 0.9rem; color: var(--muted); margin: 18px 0 6px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h2>Brisket: long cook with a stall</h2>
+<div class="card"><div id="a"></div></div>
+
+<h2>Short cook, target set</h2>
+<div class="card"><div id="b"></div></div>
+
+<h2>Pit trace toggled off (axis rescales to food)</h2>
+<div class="card"><div id="e"></div></div>
+
+<h2>Two samples only</h2>
+<div class="card"><div id="c"></div></div>
+
+<h2>No history</h2>
+<div class="card"><div id="d"></div></div>
+
+<script type="module">
+import { createChartPanel } from '../public/js/chart.js';
+
+const cToRaw = (c) => Math.round((c * 9 / 5 + 32) * 10);
+
+/** Synthetic cook: tip climbs, stalls near 70C, then finishes. */
+function brisket(hours, n) {
+  const out = [];
+  const now = Date.now();
+  for (let i = 0; i < n; i++) {
+    const f = i / (n - 1);
+    const t = now - (1 - f) * hours * 3600e3;
+    let tip;
+    if (f < 0.35) tip = 8 + f * (70 - 8) / 0.35;
+    else if (f < 0.7) tip = 70 + Math.sin(f * 40) * 0.6;          // the stall
+    else tip = 70 + ((f - 0.7) / 0.3) * 26;
+    // Pit temperature swings as the fire cycles.
+    const amb = 112 + Math.sin(f * 26) * 9 + Math.sin(f * 7) * 4;
+    out.push([t, cToRaw(tip), cToRaw(amb), 100 - Math.round(f * 30)]);
+  }
+  return out;
+}
+
+function shortCook(n) {
+  const out = [];
+  const now = Date.now();
+  for (let i = 0; i < n; i++) {
+    const f = i / (n - 1);
+    const t = now - (1 - f) * 40 * 60e3;
+    out.push([t, cToRaw(20 + f * 42), cToRaw(180 + Math.sin(f * 12) * 12), 96]);
+  }
+  return out;
+}
+
+createChartPanel(document.getElementById('a')).update({ samples: brisket(9, 3200), unit: 'c' });
+createChartPanel(document.getElementById('b')).update({ samples: shortCook(240), unit: 'c', targetRaw: cToRaw(68) });
+// Same data as the short cook, with Ambient toggled off via the legend, to
+// show the axis rescaling to the food range instead of being dwarfed by the pit.
+createChartPanel(document.getElementById('e')).update({ samples: shortCook(240), unit: 'c', targetRaw: cToRaw(68) });
+document.querySelector('#e .legend-item[aria-pressed]:nth-of-type(1)');
+document.querySelectorAll('#e .legend-item')[1].click();
+
+createChartPanel(document.getElementById('c')).update({
+  samples: [[Date.now() - 60000, cToRaw(22.4), cToRaw(21.1), 100], [Date.now(), cToRaw(22.6), cToRaw(21.0), 100]],
+  unit: 'c',
+});
+createChartPanel(document.getElementById('d')).update({ samples: [], unit: 'c' });
+
+// Signal readiness for the screenshot driver.
+requestAnimationFrame(() => requestAnimationFrame(() => { document.title = 'ready'; }));
+</script>
+</body>
+</html>

@@ -120,8 +120,39 @@
       </div>
     </div>
 
-    <details class="probe-more">
+    <!-- Sounds only while the page is open: closing it stops the BLE scan, so
+         there would be no temperature to alarm on. -->
+    <div class="alarm-banner" data-role="alarm" role="alert" hidden>
+      <span class="alarm-icon" aria-hidden="true">!</span>
+      <span data-role="alarm-text"></span>
+      <button class="btn" data-role="ack" type="button">Stop</button>
+    </div>
+
+    <div class="target-row">
+      <p class="target-display">
+        <span class="target-label">Target</span>
+        <span class="target-value" data-role="target-value">not set</span>
+      </p>
+      <span class="target-buttons" data-role="target-buttons">
+        <button class="btn btn-ghost" data-role="target-edit" type="button">Set target</button>
+        <button class="btn btn-ghost" data-role="target-clear" type="button" hidden>Clear</button>
+      </span>
+      <form class="target-form" data-role="target-form" hidden>
+        <!-- inputmode brings up the numeric keypad without type=number's
+             spinner arrows eating space on a phone -->
+        <input class="target-input" data-role="target-input" type="number"
+               inputmode="decimal" step="0.5" aria-label="Target food temperature">
+        <span class="target-unit" data-role="target-unit">°C</span>
+        <button class="btn btn-primary" type="submit">Set</button>
+        <button class="btn btn-ghost" data-role="target-cancel" type="button">Cancel</button>
+      </form>
+    </div>
+
+    <details class="probe-more" data-role="more">
       <summary>Details</summary>
+      <!-- Chart is built the first time this panel opens: rendering a canvas
+           per probe up front would cost battery for something unseen. -->
+      <div data-role="chart"></div>
       <dl class="kv">
         <dt>Probe ID</dt><dd data-role="probe-id"></dd>
         <dt>Signal</dt><dd data-role="rssi"></dd>
@@ -133,9 +164,6 @@
         <button class="btn btn-ghost" data-role="clear" type="button">Clear history</button>
         <button class="btn btn-ghost btn-danger" data-role="forget" type="button">Forget</button>
       </div>
-      <p class="hint">&ldquo;Food&rdquo; and &ldquo;Ambient&rdquo; are inferred
-        from how the two sensors behaved while cooling, not yet confirmed. If
-        they look swapped, trust the raw counts.</p>
     </details>
   </article>
 </template>

@@ -138,6 +138,13 @@ export const FLAG_URL = 'chrome://flags/#enable-experimental-web-platform-featur
  * Emits parsed readings via the callback passed to start(). Every probe in
  * range is reported; filtering to a chosen subset is the caller's job, because
  * the app wants to keep seeing probes it is not currently displaying.
+ *
+ * Chrome stops LE scans out from under us. Observed in the field: switching one
+ * probe off silently killed the scan, so the remaining probe simply stopped
+ * updating until the user tapped Start again. Backgrounding the page does the
+ * same. So this class does not trust the scan to stay alive -- a watchdog
+ * checks `active` and restarts it, and the UI is told which state we are in
+ * rather than quietly going deaf.
  */
 export class ProbeScanner {
   constructor() {
@@ -146,10 +153,32 @@ export class ProbeScanner {
     this._onReading = null;
     this._onError = null;
     this._filtered = true;
+
+    /** Intent, as distinct from whether a scan is actually alive right now. */
+    this._wantRunning = false;
+    this._watchdog = null;
+    this._restarting = false;
+    this._failures = 0;
+
+    /** @type {(state:'scanning'|'resuming'|'needs-gesture'|'stopped')=>void} */
+    this.onState = null;
+
+    this._onVisible = () => {
+      // Chrome suspends scanning for hidden pages; nudge it the moment we are
+      // back rather than waiting for the next watchdog tick.
+      if (this._wantRunning && document.visibilityState === 'visible') this._ensureAlive();
+    };
+    document.addEventListener('visibilitychange', this._onVisible);
   }
 
+  /** True only if a scan is genuinely alive at this instant. */
   get running() {
     return Boolean(this._scan?.active);
+  }
+
+  /** True while the user wants scanning, even if the scan is being restarted. */
+  get wantRunning() {
+    return this._wantRunning;
   }
 
   /** Did we fall back to an unfiltered scan? Useful diagnostic for the UI. */
@@ -157,23 +186,14 @@ export class ProbeScanner {
     return this._filtered;
   }
 
-  /**
-   * @param {(reading: object) => void} onReading
-   * @param {(err: Error) => void} [onError]
-   */
-  async start(onReading, onError) {
-    if (this.running) return;
+  _emit(state) {
+    try {
+      this.onState?.(state);
+    } catch { /* a UI callback must never break the scanner */ }
+  }
 
-    const cap = capabilities();
-    if (!cap.ok) throw new Error('scanning unavailable: see readiness()');
-
-    this._onReading = onReading;
-    this._onError = onError;
-
-    // Prefer a manufacturer-data filter: the permission prompt is narrower and
-    // we are not woken for every beacon in the building. Not every
-    // implementation supports manufacturerData filters, so fall back to
-    // accepting everything and filtering in software.
+  /** The raw requestLEScan call, with a filtered-then-unfiltered fallback. */
+  async _beginScan() {
     try {
       this._scan = await navigator.bluetooth.requestLEScan({
         filters: [{ manufacturerData: [{ companyIdentifier: COMPANY_ID }] }],
@@ -188,29 +208,96 @@ export class ProbeScanner {
       });
       this._filtered = false;
     }
+  }
 
-    this._onAdv = (event) => {
-      try {
-        const mfg = event.manufacturerData?.get(COMPANY_ID);
-        if (!mfg) return;
-        const reading = parseMfgData(mfg, {
-          // Web Bluetooth hides the MAC. device.id is stable per origin, but
-          // the payload's own probe id (protocol.js) is the durable one.
-          id: event.device?.id ?? null,
-          name: event.device?.name ?? event.name ?? null,
-          rssi: typeof event.rssi === 'number' ? event.rssi : null,
-          t: Date.now(),
-        });
-        if (reading) this._onReading?.(reading);
-      } catch (err) {
-        this._onError?.(err);
+  /**
+   * Restart the scan if it has died. Requires that permission was already
+   * granted -- Chrome allows a re-scan without a fresh gesture once the origin
+   * holds the permission, but if it refuses we surface that instead of looping.
+   */
+  async _ensureAlive() {
+    if (!this._wantRunning || this._restarting || this.running) return;
+    this._restarting = true;
+    this._emit('resuming');
+    try {
+      await this._beginScan();
+      this._failures = 0;
+      this._emit('scanning');
+    } catch (err) {
+      this._failures++;
+      if (err?.name === 'NotAllowedError' || this._failures >= 4) {
+        // Needs a real user gesture, or it is failing persistently. Stop
+        // hammering the API and ask for a tap.
+        this._wantRunning = false;
+        this._stopWatchdog();
+        this._emit('needs-gesture');
       }
-    };
+    } finally {
+      this._restarting = false;
+    }
+  }
 
-    navigator.bluetooth.addEventListener('advertisementreceived', this._onAdv);
+  _startWatchdog() {
+    if (this._watchdog) return;
+    this._watchdog = setInterval(() => this._ensureAlive(), 4000);
+  }
+
+  _stopWatchdog() {
+    if (this._watchdog) {
+      clearInterval(this._watchdog);
+      this._watchdog = null;
+    }
+  }
+
+  /**
+   * @param {(reading: object) => void} onReading
+   * @param {(err: Error) => void} [onError]
+   */
+  async start(onReading, onError) {
+    if (this._wantRunning && this.running) return;
+
+    const cap = capabilities();
+    if (!cap.ok) throw new Error('scanning unavailable: see readiness()');
+
+    this._onReading = onReading;
+    this._onError = onError;
+
+    // Prefer a manufacturer-data filter: the permission prompt is narrower and
+    // we are not woken for every beacon in the building. Not every
+    // implementation supports manufacturerData filters, so fall back to
+    // accepting everything and filtering in software.
+    await this._beginScan();
+
+    if (!this._onAdv) {
+      this._onAdv = (event) => {
+        try {
+          const mfg = event.manufacturerData?.get(COMPANY_ID);
+          if (!mfg) return;
+          const reading = parseMfgData(mfg, {
+            // Web Bluetooth hides the MAC. device.id is stable per origin, but
+            // the payload's own probe id (protocol.js) is the durable one.
+            id: event.device?.id ?? null,
+            name: event.device?.name ?? event.name ?? null,
+            rssi: typeof event.rssi === 'number' ? event.rssi : null,
+            t: Date.now(),
+          });
+          if (reading) this._onReading?.(reading);
+        } catch (err) {
+          this._onError?.(err);
+        }
+      };
+      navigator.bluetooth.addEventListener('advertisementreceived', this._onAdv);
+    }
+
+    this._wantRunning = true;
+    this._failures = 0;
+    this._startWatchdog();
+    this._emit('scanning');
   }
 
   stop() {
+    this._wantRunning = false;
+    this._stopWatchdog();
     if (this._onAdv) {
       navigator.bluetooth.removeEventListener('advertisementreceived', this._onAdv);
       this._onAdv = null;
@@ -221,6 +308,7 @@ export class ProbeScanner {
       /* already stopped */
     }
     this._scan = null;
+    this._emit('stopped');
   }
 }
 

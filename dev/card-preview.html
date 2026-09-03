@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- Dev harness. NOT deployed. Clones the REAL card template out of
+     public/index.html and styles it with the real stylesheet, so what is
+     screenshotted is the shipping markup and CSS. Only the text values are
+     stubbed -- this reviews layout, not logic (logic is covered by the tests). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>card preview</title>
+<link rel="stylesheet" href="../public/styles.css">
+<style>
+  body { padding: 12px; max-width: 380px; }
+  h2 { font-size: 0.85rem; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+
+<script type="module">
+import { createChartPanel } from '../public/js/chart.js';
+
+const cToRaw = (c) => Math.round((c * 9 / 5 + 32) * 10);
+
+const html = await (await fetch('../public/index.html')).text();
+const doc = new DOMParser().parseFromString(html, 'text/html');
+const tpl = doc.getElementById('probe-card-template');
+
+function cook(mins, n, from, to, amb) {
+  const out = []; const now = Date.now();
+  for (let i = 0; i < n; i++) {
+    const f = i / (n - 1);
+    out.push([now - (1 - f) * mins * 60e3, cToRaw(from + (to - from) * f),
+              cToRaw(amb + Math.sin(f * 18) * 8), 100 - Math.round(f * 12)]);
+  }
+  return out;
+}
+
+function card({ title, name, status, batt, age, tip, amb, target, alarm, openDetails, samples }) {
+  const h = document.createElement('h2');
+  h.textContent = title;
+  document.getElementById('out').appendChild(h);
+
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  const q = (r) => node.querySelector(`[data-role="${r}"]`);
+  node.dataset.status = status;
+  node.dataset.selected = 'true';
+  node.dataset.alarm = alarm;
+  node.querySelector('.probe-name').textContent = name;
+  q('status').textContent = status;
+  q('battery').textContent = `${batt}%`;
+  q('age').textContent = age;
+  q('tip').textContent = tip;
+  q('ambient').textContent = amb;
+  q('target-value').textContent = target ?? 'not set';
+  q('target-edit').textContent = target ? 'Change' : 'Set target';
+  q('target-clear').hidden = !target;
+  q('alarm').hidden = alarm !== 'firing';
+  if (alarm === 'firing') q('alarm-text').textContent = `${name} reached ${tip}°C`;
+  q('probe-id').textContent = '5ce1024db36c';
+  q('rssi').textContent = '-58 dBm';
+  q('raw').textContent = 'A 1490 / B 2210';
+  q('samples').textContent = String(samples?.length ?? 0);
+  if (openDetails) q('more').open = true;
+  document.getElementById('out').appendChild(node);
+  if (openDetails && samples) {
+    createChartPanel(q('chart')).update({ samples, unit: 'c', targetRaw: target ? cToRaw(68) : null });
+  }
+  return node;
+}
+
+card({ title: 'Live, target set', name: 'brisket', status: 'live', batt: 94,
+  age: '4s ago', tip: '62.4', amb: '118.0', target: '68.0°C', alarm: 'off',
+  openDetails: false });
+
+card({ title: 'Alarm firing', name: 'pork shoulder', status: 'live', batt: 88,
+  age: '2s ago', tip: '68.3', amb: '121.5', target: '68.0°C', alarm: 'firing',
+  openDetails: false });
+
+card({ title: 'Details open, with chart', name: 'chicken', status: 'live', batt: 100,
+  age: '7s ago', tip: '71.2', amb: '180.4', target: '74.0°C', alarm: 'off',
+  openDetails: true, samples: cook(55, 320, 20, 71.2, 180) });
+
+card({ title: 'No target, editing form open', name: 'Ninja-WP100-R', status: 'stale',
+  batt: 100, age: '48s ago', tip: '22.6', amb: '21.0', target: null, alarm: 'off',
+  openDetails: false });
+// show the editor state on the last card
+const last = document.querySelectorAll('.probe');
+const lastQ = (r) => last[last.length - 1].querySelector(`[data-role="${r}"]`);
+lastQ('target-buttons').hidden = true;
+lastQ('target-form').hidden = false;
+lastQ('target-input').value = '65';
+
+requestAnimationFrame(() => requestAnimationFrame(() => { document.title = 'ready'; }));
+</script>
+</body>
+</html>

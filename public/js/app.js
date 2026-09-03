@@ -9,12 +9,18 @@
 import {
   FLAG_URL, ProbeScanner, WakeLock, capabilities, describeScanError, readiness,
 } from './ble.js';
-import { fmtTemp } from './protocol.js';
+import { Alarm } from './alarm.js';
+import { createChartPanel } from './chart.js';
+import { cToRaw, fToRaw, fmtTemp, rawToC, rawToF } from './protocol.js';
 import { ProbeRegistry } from './store.js';
 
 const registry = new ProbeRegistry();
 const scanner = new ProbeScanner();
 const wake = new WakeLock();
+const alarm = new Alarm();
+
+/** probeId -> chart panel, built lazily when a Details panel first opens. */
+const charts = new Map();
 
 const el = {
   unsupported: document.getElementById('unsupported'),
@@ -56,6 +62,16 @@ function fmtAge(ms) {
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
   return `${Math.floor(m / 60)}h ${m % 60}m ago`;
+}
+
+/** Raw counts -> the number shown in the current unit. */
+function rawToUnit(raw) {
+  return registry.unit === 'f' ? rawToF(raw) : rawToC(raw);
+}
+
+/** A number typed in the current unit -> raw counts. */
+function unitToRaw(v) {
+  return registry.unit === 'f' ? fToRaw(v) : cToRaw(v);
 }
 
 function displayName(p) {
@@ -297,6 +313,59 @@ function makeCard(p) {
     updateCard(registry.get(p.probeId));
   });
 
+  // -- target temperature ------------------------------------------------
+  const form = q('target-form');
+  const input = q('target-input');
+
+  function openTargetEditor() {
+    const cur = registry.get(p.probeId)?.targetRaw;
+    input.value = cur === null || cur === undefined ? '' : rawToUnit(cur).toFixed(1);
+    q('target-buttons').hidden = true;
+    form.hidden = false;
+    input.focus();
+    input.select?.();
+  }
+
+  function closeTargetEditor() {
+    form.hidden = true;
+    q('target-buttons').hidden = false;
+  }
+
+  q('target-edit').addEventListener('click', openTargetEditor);
+  q('target-cancel').addEventListener('click', closeTargetEditor);
+
+  q('target-clear').addEventListener('click', () => {
+    registry.setTarget(p.probeId, null);
+    closeTargetEditor();
+    syncAlarmSound();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = Number.parseFloat(input.value);
+    if (!Number.isFinite(v)) return;
+    // This submit is a real user gesture, which is the only moment autoplay
+    // policy lets us unlock audio. Miss it and the alarm fires silently.
+    await alarm.prime();
+    registry.setTarget(p.probeId, unitToRaw(v));
+    closeTargetEditor();
+    updateCard(registry.get(p.probeId));
+    syncAlarmSound();
+  });
+
+  q('ack').addEventListener('click', () => {
+    registry.acknowledgeAlarm(p.probeId);
+    updateCard(registry.get(p.probeId));
+    syncAlarmSound();
+  });
+
+  // -- chart -------------------------------------------------------------
+  q('more').addEventListener('toggle', (e) => {
+    if (!e.target.open) return;
+    ensureChart(p.probeId);
+    refreshChart(p.probeId);
+  });
+
   q('export').addEventListener('click', () => {
     const current = registry.get(p.probeId);
     const csv = registry.toCSV(p.probeId);
@@ -317,14 +386,45 @@ function makeCard(p) {
   q('forget').addEventListener('click', () => {
     if (!confirm('Forget this probe and delete its history?')) return;
     registry.forget(p.probeId);
+    charts.get(p.probeId)?.destroy();
+    charts.delete(p.probeId);
     cards.get(p.probeId)?.remove();
     cards.delete(p.probeId);
     renderEmptyState();
+    syncAlarmSound();
   });
 
   cards.set(p.probeId, node);
   el.probes.appendChild(node);
   return node;
+}
+
+function ensureChart(probeId) {
+  if (charts.has(probeId)) return charts.get(probeId);
+  const node = cards.get(probeId);
+  const host = node?.querySelector('[data-role="chart"]');
+  if (!host) return null;
+  const panel = createChartPanel(host);
+  charts.set(probeId, panel);
+  return panel;
+}
+
+function refreshChart(probeId) {
+  const panel = charts.get(probeId);
+  if (!panel) return;
+  // Skip work for a collapsed panel: the canvas is not visible and would be
+  // re-rendered on open anyway.
+  const node = cards.get(probeId);
+  if (!node?.querySelector('[data-role="more"]')?.open) return;
+  const p = registry.get(probeId);
+  if (!p) return;
+  panel.update({ samples: p.samples, unit: registry.unit, targetRaw: p.targetRaw ?? null });
+}
+
+/** Start or stop the sound to match whether anything is actually firing. */
+function syncAlarmSound() {
+  if (registry.firing().length > 0) alarm.start();
+  else alarm.stop();
 }
 
 function updateCard(p) {
@@ -348,12 +448,34 @@ function updateCard(p) {
   q('tip-unit').textContent = unitSuffix();
   q('ambient-unit').textContent = unitSuffix();
 
+  // -- target + alarm --
+  const hasTarget = p.targetRaw !== null && p.targetRaw !== undefined;
+  const u = unitSuffix();
+  q('target-value').textContent = hasTarget
+    ? `${rawToUnit(p.targetRaw).toFixed(1)}${u}`
+    : 'not set';
+  q('target-clear').hidden = !hasTarget;
+  q('target-edit').textContent = hasTarget ? 'Change' : 'Set target';
+  q('target-unit').textContent = u;
+
+  const firing = p.alarmState === 'fired';
+  node.dataset.alarm = firing ? 'firing' : p.alarmState === 'acked' ? 'acked' : 'off';
+  q('alarm').hidden = !firing;
+  if (firing) {
+    const reached = fmtTemp(p.last, 'tip', registry.unit);
+    q('alarm-text').textContent = alarm.audioReady
+      ? `${displayName(p)} reached ${reached}${u}`
+      : `${displayName(p)} reached ${reached}${u} \u2014 sound is blocked, tap Stop`;
+  }
+
   q('probe-id').textContent = p.probeId;
   q('rssi').textContent = p.last?.rssi === null || p.last?.rssi === undefined
     ? '--'
     : `${p.last.rssi} dBm`;
   q('raw').textContent = p.last ? `A ${p.last.rawA} / B ${p.last.rawB}` : '--';
   q('samples').textContent = String(p.samples.length);
+
+  refreshChart(p.probeId);
 }
 
 function refreshAges() {
@@ -376,11 +498,41 @@ function renderAll() {
 
 function renderEmptyState() {
   const any = registry.probes.size > 0;
-  el.empty.hidden = any || !scanner.running;
+  el.empty.hidden = any || !scanner.wantRunning;
   el.probes.hidden = !any;
 }
 
 // ------------------------------------------------------------------ scanning
+
+/**
+ * Chrome kills LE scans unpredictably -- switching a probe off was observed to
+ * take the scan down with it. The scanner restarts itself; this just keeps the
+ * UI honest about which state we are in, so a dropped scan is never mistaken
+ * for a probe that has gone quiet.
+ */
+scanner.onState = (state) => {
+  if (state === 'scanning') {
+    el.scanBtn.disabled = false;
+    el.scanBtn.textContent = 'Stop scanning';
+    el.scanBtn.dataset.scanning = 'true';
+    el.scanStatus.textContent = scanner.filtered
+      ? 'Scanning. A probe can take ~10s to appear.'
+      : 'Scanning (unfiltered). A probe can take ~10s to appear.';
+  } else if (state === 'resuming') {
+    el.scanBtn.dataset.scanning = 'true';
+    el.scanStatus.textContent = 'Scan dropped by the browser — resuming…';
+  } else if (state === 'needs-gesture') {
+    el.scanBtn.disabled = false;
+    el.scanBtn.textContent = 'Resume scanning';
+    el.scanBtn.dataset.scanning = 'false';
+    el.scanStatus.textContent = 'The browser stopped the scan and needs a tap to restart it.';
+  } else {
+    el.scanBtn.textContent = 'Start scanning';
+    el.scanBtn.dataset.scanning = 'false';
+    el.scanStatus.textContent = 'Stopped. Readings below are the last seen.';
+  }
+  renderEmptyState();
+};
 
 async function startScan() {
   try {
@@ -390,13 +542,9 @@ async function startScan() {
       (err) => console.warn('advertisement parse failed', err),
     );
     hideNotice();
-    el.scanBtn.textContent = 'Stop scanning';
-    el.scanBtn.dataset.scanning = 'true';
-    el.scanStatus.textContent = scanner.filtered
-      ? 'Scanning. A probe can take ~10s to appear.'
-      : 'Scanning (unfiltered). A probe can take ~10s to appear.';
     // Only worth holding the screen awake once data is actually flowing.
     if (WakeLock.supported) el.wakeToggle.hidden = false;
+    // onState has already painted the scanning state.
     renderEmptyState();
   } catch (err) {
     el.scanBtn.dataset.scanning = 'false';
@@ -409,17 +557,15 @@ async function startScan() {
 }
 
 function stopScan() {
-  scanner.stop();
-  el.scanBtn.textContent = 'Start scanning';
-  el.scanBtn.dataset.scanning = 'false';
-  el.scanStatus.textContent = 'Stopped. Readings below are the last seen.';
-  renderEmptyState();
+  scanner.stop(); // emits 'stopped', which repaints the button and status
 }
 
 // ------------------------------------------------------------------ wiring
 
 el.scanBtn.addEventListener('click', () => {
-  if (scanner.running) stopScan();
+  // wantRunning, not running: mid-restart the scan is briefly inactive and a
+  // tap should still mean "stop", not "start a second one".
+  if (scanner.wantRunning) stopScan();
   else startScan();
 });
 
@@ -452,6 +598,13 @@ registry.addEventListener('probe-added', () => {
   setSetupVisible(false);
   renderEmptyState();
 });
+registry.addEventListener('alarm-fired', (e) => {
+  updateCard(e.detail);
+  syncAlarmSound();
+  // A fired alarm is worth interrupting a collapsed view for.
+  window.navigator.vibrate?.([220, 90, 220]);
+});
+
 registry.addEventListener('change', (e) => {
   if (e.detail) updateCard(e.detail);
   else renderAll();
@@ -459,6 +612,7 @@ registry.addEventListener('change', (e) => {
 registry.addEventListener('unit-changed', () => {
   el.unitLabel.textContent = unitSuffix();
   renderAll();
+  for (const probeId of charts.keys()) refreshChart(probeId);
 });
 
 el.copyFlag?.addEventListener('click', async () => {
