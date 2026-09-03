@@ -374,24 +374,44 @@ different thermal mass and placement along the probe body.
 
 ## 6. Timing and radio behaviour
 
-Measured over a 90 s capture, probe not connected to anything:
+Measured on an ESP32 running a raw active scan for 60 s, which sees every
+packet the controller receives with no host-side filtering:
 
 | Property | Value |
 |---|---|
-| Advertisements observed | 10 in 90 s |
-| Interval, median | **~10.7 s** |
-| Interval, min / max | 4.1 s / 14.0 s |
-| RSSI at ~1 m | −52 to −64 dBm |
+| `ADV_IND` packets | 85, **none** carrying manufacturer data |
+| `SCAN_RSP` packets | 78, **all 78** carrying manufacturer data |
+| Payload packet interval, median | **~307 ms** (min 278 ms, max 3.4 s) |
+| Distinct temperature values in 60 s | 16 |
+| Value-change interval, median | **~2.4 s** (min 0.3 s, max 17.1 s) |
+| RSSI at ~1 m | −49 to −62 dBm |
 
-~10 s is slow for a live display but entirely adequate for cooking, where
-thermal time constants are minutes. It has not been tested whether the probe
-increases its advertising rate while the official app is connected, or whether
-a faster telemetry stream exists over GATT.
+Two things follow.
 
-Practical consequence: a scan window shorter than ~12 s can miss a probe
-entirely. Use ≥ 12–15 s for discovery, and expect gaps of up to ~15 s between
-live updates. UIs should show the age of the last reading rather than implying
-the number is current.
+**The `ADV_IND` / `SCAN_RSP` split is now proven, not inferred.** Across 163
+packets from the probe, every single one carrying manufacturer data was a scan
+response and not one primary advertisement did. §2's warning is a measured
+fact.
+
+**The probe is fast; some host stacks are not.** An earlier measurement through
+BlueZ/bleak reported a ~10 s interval, and that figure was wrong — it was
+BlueZ coalescing identical advertisements and only raising a D-Bus
+`PropertiesChanged` when something differed. The probe itself broadcasts about
+three times a second.
+
+So the observed update rate is a property of *your Bluetooth stack*, not of the
+device:
+
+| Stack | Effective rate |
+|---|---|
+| Raw HCI / ESP32 `bluetooth.gap_scan` | every ~300 ms |
+| BlueZ via D-Bus (bleak, `bluetoothctl`) | coalesced, ~10 s |
+| Chrome `requestLEScan` | not yet measured; `keepRepeatedDevices: true` is required or you get one event per device and nothing more |
+
+Practical consequences: a discovery window of a couple of seconds is plenty on
+a raw stack, but needs to be ~15 s on BlueZ. Since the effective rate is
+stack-dependent and can be much slower than the device, a UI should always show
+the **age** of the last reading rather than implying it is current.
 
 ---
 

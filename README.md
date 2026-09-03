@@ -70,9 +70,10 @@ SharkNinja), that it is provided as is with all responsibility on the user, and
 that **safety features may be missing** — there is no over-temperature warning,
 and the real product may have alarms, limits or calibration behaviour that was
 never observed on the air and therefore could not be implemented. It also names
-the specific limitations that matter: the ~10 s update rate, the alarm needing
-the page open, the single-point temperature check, and that nothing here is
-validated for food safety.
+the specific limitations that matter: that the delivered update rate depends on
+the browser's Bluetooth stack rather than the probe, the alarm needing the page
+open, the single-point temperature check, and that nothing here is validated for
+food safety.
 
 The accept button is **disabled for a 10-second countdown**, so it cannot be
 clicked through before the text has been read. Acceptance is recorded, and
@@ -111,9 +112,10 @@ substantively.
 - **Several probes at once**, each with its own card, history and nickname.
 - **Records history from the first reading**, so a cook is already logged before
   you think to ask for it. Exportable as CSV.
-- **Freshness is always visible.** Probes advertise only every ~10 s, so a
-  number on screen can be 15 s old. Cards age `live → stale → offline` rather
-  than pretending a stale value is current.
+- **Freshness is always visible.** The probe broadcasts about three times a
+  second, but how much of that a browser delivers is stack-dependent, so a
+  number on screen can be seconds old. Cards age `live → stale → offline`
+  rather than pretending a stale value is current.
 - **Screen wake lock**, because a cook lasts hours and nobody wants to keep
   poking the screen.
 - **Installable** to the home screen, and remembers probes and nicknames across
@@ -332,6 +334,11 @@ Worth reading before filing a bug.
   alarm on. Use the wake lock (the ☀ button) to keep the page alive through a
   cook. A background push notification would need both a service worker and a
   server that knew the temperature, and neither exists here.
+- **The delivered update rate is a property of the browser, not the probe.**
+  Measured on a raw ESP32 scan, the probe sends a payload every ~300 ms and
+  changes value every ~2.4 s ([PROTOCOL.md §6](PROTOCOL.md)). BlueZ coalesces
+  that to ~10 s; Chrome's behaviour has not been measured. Treat the displayed
+  reading age as authoritative.
 - **Sound needs one tap first.** Browsers only unlock audio inside a user
   gesture, so audio is primed when you press *Set* on a target. If it was
   somehow blocked, the alarm banner says so instead of failing silently — the

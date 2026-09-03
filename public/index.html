@@ -77,8 +77,11 @@
       <section>
         <h3>Known limitations</h3>
         <ul>
-          <li>Readings arrive only about every <strong>10 seconds</strong>, so a
-            number on screen can be 15 seconds out of date.</li>
+          <li>How often a reading arrives depends on your phone&rsquo;s
+            Bluetooth stack, not on the probe. A number on screen
+            <strong>can be many seconds out of date</strong>, so the age of the
+            last reading is always shown next to it &mdash; trust that, not the
+            number alone.</li>
           <li>The target alarm <strong>only sounds while this page is open</strong>.
             Close it, or let the phone sleep without the wake lock, and nothing
             will warn you.</li>
@@ -169,9 +172,8 @@
 
   <section id="empty" class="card empty" hidden>
     <h2>Looking for probes…</h2>
-    <p>Probes broadcast only about every <strong>10 seconds</strong>, so this can
-      take a moment. Keep the phone within a few metres, and make sure the probe
-      is switched on and out of its dock.</p>
+    <p>This can take a few seconds. Keep the phone within a few metres, and
+      make sure the probe is switched on and out of its dock.</p>
   </section>
 
   <!-- One card per probe. Every probe in range is tracked at once: the app

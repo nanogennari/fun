@@ -13,7 +13,15 @@
  * time-at-temperature integral arrive.
  */
 
-/** Readings arrive roughly every 10 s; see PROTOCOL.md section 6. */
+/**
+ * Staleness thresholds.
+ *
+ * The probe broadcasts about three times a second (PROTOCOL.md section 6), but
+ * the rate the browser actually delivers is stack-dependent and has not been
+ * measured for Chrome's requestLEScan. These stay deliberately generous: too
+ * tight and every card would flicker to "stale" on a stack that coalesces,
+ * which is worse than being slow to notice a probe that really has gone away.
+ */
 import { isUnsetProbeId } from './protocol.js';
 
 export const STALE_MS = 35_000;
@@ -151,7 +159,7 @@ export class ProbeRegistry extends EventTarget {
     p.targetRaw = raw === null || raw === undefined ? null : Math.round(raw);
     p.alarmState = 'idle';
     // Re-check at once: a target set below the current temperature should fire
-    // immediately rather than waiting for the next advertisement ~10s later.
+    // immediately rather than waiting for the next advertisement to arrive.
     this._evaluateAlarm(p);
     this._scheduleSave();
     this.dispatchEvent(new CustomEvent('change', { detail: p }));

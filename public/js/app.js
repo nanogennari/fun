@@ -214,7 +214,7 @@ function buildSetupSteps(r) {
   steps.push({
     state: 'info',
     label: 'Tap \u201cStart scanning\u201d and allow the prompt',
-    detail: 'The first reading can take 10\u201315 seconds: that is how often the probe broadcasts, not a hang.',
+    detail: 'The first reading can take several seconds. How quickly they arrive depends on the browser\u2019s Bluetooth stack, not on the probe.',
   });
 
   return steps;
@@ -526,8 +526,8 @@ scanner.onState = (state) => {
     el.scanBtn.textContent = 'Stop scanning';
     el.scanBtn.dataset.scanning = 'true';
     el.scanStatus.textContent = scanner.filtered
-      ? 'Scanning. A probe can take ~10s to appear.'
-      : 'Scanning (unfiltered). A probe can take ~10s to appear.';
+      ? 'Scanning. A probe can take a few seconds to appear.'
+      : 'Scanning (unfiltered). A probe can take a few seconds to appear.';
   } else if (state === 'resuming') {
     el.scanBtn.dataset.scanning = 'true';
     el.scanStatus.textContent = 'Scan dropped by the browser — resuming…';
