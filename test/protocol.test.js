@@ -35,7 +35,7 @@ test('parses every real captured frame', () => {
     // 'byte 1 is a constant, not a battery level' below
     assert.equal(r.batteryPct, 100);
     assert.equal(r.probeId, '5ce1024db36c');
-    assert.equal(r.unknown2, 1);
+    assert.equal(r.readingValid, true);   // byte 2 == 1
     assert.equal(r.unknown3, 1);
   }
 });
@@ -208,4 +208,37 @@ test('only the serial and the temperatures differ between probes', () => {
   for (const p of TWO_PROBES) {
     assert.equal(parseMfgData(hex(p.hex)).probeId, p.probeId);
   }
+});
+
+// ---- byte 1 and byte 2 semantics ----------------------------------------
+
+test('byte 1 is exposed without claiming to be a battery level', () => {
+  // Two probes at very different states of charge both report 0x64 in every
+  // frame ever captured, so it is a constant, not a measurement.
+  // PROTOCOL.md 3.1. batteryPct survives only as a compatibility alias.
+  const r = parseMfgData(hex(REAL[2]));
+  assert.equal(r.byte1, 0x64);
+  assert.equal(r.batteryPct, r.byte1, 'alias must track the same byte');
+});
+
+test('byte 2 = 0 means no reading, whatever the temperature bytes say', () => {
+  const b = hex('066401015ce1024db36cf902d802');
+  b[2] = 0;
+  const r = parseMfgData(b);
+  assert.ok(r, 'the frame is still from an identified probe');
+  assert.equal(r.readingValid, false);
+  assert.equal(r.tipC, null, 'must not report a temperature it has disowned');
+  assert.equal(r.ambientC, null);
+  // Raw values stay available for anyone investigating the protocol.
+  assert.equal(r.rawA, 761);
+  assert.equal(r.rawB, 728);
+});
+
+test('byte 2 = 0 with 0xFFFF temperatures is the observed no-reading frame', () => {
+  const b = hex('066400015ce1024db36cffffffff');
+  const r = parseMfgData(b);
+  assert.ok(r);
+  assert.equal(r.readingValid, false);
+  assert.equal(r.tipC, null);
+  assert.equal(r.ambientC, null);
 });

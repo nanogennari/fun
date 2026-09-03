@@ -95,7 +95,7 @@ export class ProbeRegistry extends EventTarget {
     p.lastSeen = reading.t;
     p.last = reading;
 
-    // Store compactly: [t, rawA, rawB, battery]. Raw counts, not converted
+    // Store compactly: [t, rawA, rawB, byte1]. Raw counts, not converted
     // degrees, so a later correction to the scale reinterprets old data
     // correctly instead of baking in today's conversion.
     const s = p.samples;
@@ -105,7 +105,7 @@ export class ProbeRegistry extends EventTarget {
     const dup = prev && prev[1] === reading.rawA && prev[2] === reading.rawB
       && reading.t - prev[0] < 5000;
     if (!dup) {
-      s.push([reading.t, reading.rawA, reading.rawB, reading.batteryPct]);
+      s.push([reading.t, reading.rawA, reading.rawB, reading.byte1]);
       if (s.length > MAX_SAMPLES) s.splice(0, s.length - MAX_SAMPLES);
     }
 
@@ -251,7 +251,7 @@ export class ProbeRegistry extends EventTarget {
     const p = this.probes.get(probeId);
     if (!p) return '';
     const rows = [
-      'unix_ms,iso,probe_id,tip_c,ambient_c,tip_raw,ambient_raw,battery_pct',
+      'unix_ms,iso,probe_id,tip_c,ambient_c,tip_raw,ambient_raw,byte1_const',
     ];
     const c = (raw) => (((raw / 10 - 32) * 5) / 9).toFixed(2);
     for (const [t, a, b, batt] of p.samples) {

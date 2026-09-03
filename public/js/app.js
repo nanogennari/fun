@@ -450,7 +450,10 @@ function updateCard(p) {
   q('status').textContent = status;
   q('selected').checked = p.selected;
 
-  q('battery').textContent = p.last ? `${p.last.batteryPct}%` : '';
+  // No battery display: payload byte 1 is a constant 0x64, not a charge level
+  // (PROTOCOL.md 3.1). Showing it as "100%" told users something untrue. The
+  // probe broadcasts no battery information at all.
+  q('battery').textContent = p.last && !p.last.readingValid ? 'no reading' : '';
   q('age').textContent = p.lastSeen ? fmtAge(Date.now() - p.lastSeen) : 'never seen';
 
   q('tip').textContent = fmtTemp(p.last, 'tip', registry.unit);
@@ -483,6 +486,7 @@ function updateCard(p) {
     ? '--'
     : `${p.last.rssi} dBm`;
   q('raw').textContent = p.last ? `A ${p.last.rawA} / B ${p.last.rawB}` : '--';
+  q('valid').textContent = p.last ? (p.last.readingValid ? 'yes' : 'no (byte 2 = 0)') : '--';
   q('samples').textContent = String(p.samples.length);
 
   refreshChart(p.probeId);

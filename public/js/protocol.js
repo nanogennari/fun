@@ -76,6 +76,12 @@ export function parseMfgData(data, meta = {}) {
   const rawA = i16le(b, 10);
   const rawB = i16le(b, 12);
 
+  // Byte 2 is a reading-valid flag, not the temperature-unit flag it was long
+  // guessed to be: 1 means the temperatures are real, 0 means both are 0xFFFF.
+  // The correlation holds over every frame captured. Sentinel-matching agrees
+  // on all of them, but this is explicit and cheaper. See PROTOCOL.md 3.3.
+  const readingValid = b[2] === 1;
+
   // Bytes 4-9 are a stable per-probe id. This matters more in the browser than
   // anywhere else: Web Bluetooth deliberately hides the MAC address, so this is
   // our only durable device identity across sessions and origins.
@@ -94,8 +100,8 @@ export function parseMfgData(data, meta = {}) {
   // a probe on, and every field in it is a placeholder anyway.
   if (isUnsetProbeId(probeId)) return null;
 
-  const tipRaw = temp(rawA);
-  const ambientRaw = temp(rawB);
+  const tipRaw = readingValid ? temp(rawA) : null;
+  const ambientRaw = readingValid ? temp(rawB) : null;
 
   return {
     frameType: b[0],
@@ -104,7 +110,9 @@ export function parseMfgData(data, meta = {}) {
     // charge both report 100. See PROTOCOL.md 3.2. Do not present this to a
     // user as a battery reading.
     batteryPct: b[1],
-    unknown2: b[2],
+    /** Same byte under a name that does not claim to be a measurement. */
+    byte1: b[1],
+    readingValid,
     unknown3: b[3],
     probeId,
     rawA,

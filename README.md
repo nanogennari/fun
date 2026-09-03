@@ -354,12 +354,15 @@ Worth reading before filing a bug.
   reporting three different ids in a row. F.U.Ninja keys on the id, which is
   correct — but if you port this, do the same. See
   [PROTOCOL.md §1.1](PROTOCOL.md).
-- **The battery percentage is not real.** Payload byte 1 was assumed to be a
-  battery level; two probes observed at once — one nearly full, one running on
-  the charge it shipped from the factory with — both reported `0x64` = 100 in
-  every packet. The byte is a constant, and the app's battery display will read
-  100 % on a probe that is about to die. A real reading would need GATT, which
-  is not solved. See [PROTOCOL.md §3.2](PROTOCOL.md).
+- **There is no battery reading, and the app no longer pretends there is.**
+  Payload byte 1 was assumed to be a battery level; two probes observed at once
+  — one nearly full, one running on the charge it shipped from the factory with
+  — both reported `0x64` = 100 in every packet, so it is a constant, not a
+  measurement. The display has been **removed** rather than left showing 100 %
+  on a probe about to die. The raw byte is still in each card's *Details* and in
+  the CSV export as `byte1_const`, for protocol work. A genuine battery level
+  would need GATT, which is not solved.
+  See [PROTOCOL.md §3.2](PROTOCOL.md).
 - **Whether Chrome's `requestLEScan` reliably surfaces *scan-response*
   manufacturer data is not yet verified on real hardware.** The payload we need
   lives in the `SCAN_RSP`, not the primary advertisement. Android's scanner is
